@@ -1,0 +1,14 @@
+apiVersion: agents.fr.simplified/v0beta0
+kind: AzureDevOps
+metadata:
+  labels:
+    app.kubernetes.io/name: azdo-agent-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: azuredevops-sample
+spec:
+  # TODO(user): Add fields here
+  orgURL: 'https://dev.azure.com/simplifi-ed'
+  project: simplifactu
+  poolName: AzDoTest
+  patSecretRef: azdopat
+  image: "mcr.microsoft.com/azure-pipelines/vsts-agent:ubuntu-20.04"
