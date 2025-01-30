@@ -1,0 +1,5 @@
+// internal/application/interfaces.go
+
+type DevOpsQueueService interface {
+	GetQueueLength(ctx context.Context, poolName string) (int, error)
+}

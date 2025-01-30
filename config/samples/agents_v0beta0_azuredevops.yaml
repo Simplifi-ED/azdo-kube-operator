@@ -7,8 +7,19 @@ metadata:
   name: azuredevops-sample
 spec:
   # TODO(user): Add fields here
-  orgURL: 'https://dev.azure.com/simplifi-ed'
-  project: simplifactu
+  orgURL: "https://dev.azure.com/simplifi-ed"
+  project: Simplifactu
   poolName: AzDoTest
   patSecretRef: azdopat
-  image: "mcr.microsoft.com/azure-pipelines/vsts-agent:ubuntu-20.04"
+  # image: hello-world
+  image: ghcr.io/etiennedeneuve/azdo-agent:ubu-0.0.1
+  imagePullSecretRef: my-secret
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: azdopat
+data:
+  PAT: MTc2SWhlNWVoSmpxakMxSGVXeEYybGJGTmFrWXhUaTVxaXdjNU5Gckc1QUxnOFNzUDhhdEpRUUo5OUJBQUNBQUFBQU1zb01nQUFBU0FaRE9sYkY4Cg==
+

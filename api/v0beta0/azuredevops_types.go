@@ -29,10 +29,11 @@ type AzureDevOpsSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of AzureDevOps. Edit azuredevops_types.go to remove/update
-	OrgURL             string `json:"orgURL,omitempty"`
-	Project            string `json:"project,omitempty"`
-	PoolName           string `json:"poolName,omitempty"`
-	Image              string `json:"image,omitempty"`
+	OrgURL   string `json:"orgURL,omitempty"`
+	Project  string `json:"project,omitempty"`
+	PoolName string `json:"poolName,omitempty"`
+	Image    string `json:"image,omitempty"`
+	// +kubebuilder:validation:Optional
 	ImagePullSecretRef string `json:"imagePullSecretRef,omitempty"`
 	PatSecretRef       string `json:"patSecretRef,omitempty"`
 }

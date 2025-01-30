@@ -1,0 +1,37 @@
+type azureDevOpsClient struct {
+	httpClient *http.Client
+	orgURL     string
+	patToken   string
+}
+
+var _ application.DevOpsQueueService = (*azureDevOpsClient)(nil)
+
+func NewAzureDevOpsClient(httpClient *http.Client, orgURL, patToken string) application.DevOpsQueueService {
+	return &azureDevOpsClient{
+		httpClient: httpClient,
+		orgURL:     orgURL,
+		patToken:   patToken,
+	}
+}
+
+func (c *azureDevOpsClient) GetQueueLength(poolName string, personalAccessToken string) (int, error) {
+	// https://dev.azure.com/{organization}/{project}/_apis/distributedtask/queues?queueNames={queueNames}&actionFilter={actionFilter}&api-version=7.2-preview.1
+	formattedUrl := fmt.Sprintf("%s/_apis/distributedtask/pools/%s/jobrequests?api-version=6.0", c.orgURL, poolName)
+	req, err := http.NewRequestWithContext(ctx, "GET", formattedUrl, nil)
+	if err != nil {
+		return 0, errors.Wrap(err, "building request")
+	}
+	req.SetBasicAuth("PAT", c.patToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, errors.Wrap(err, "performing request")
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("Azure DevOps responded with status: %d", resp.StatusCode)
+	}
+
+
+}

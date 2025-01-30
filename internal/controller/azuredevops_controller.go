@@ -79,6 +79,10 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			},
 		},
 		{
+			Name:  "AGENT_DEBUG",
+			Value: "true",
+		},
+		{
 			Name:  "AZP_URL",
 			Value: azdo.Spec.OrgURL,
 		},
@@ -91,21 +95,43 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			Value: azdo.Spec.PoolName,
 		},
 	}
-
+	var imagePullSecrets []corev1.LocalObjectReference
+	if azdo.Spec.ImagePullSecretRef != "" {
+		imagePullSecrets = []corev1.LocalObjectReference{
+			{
+				Name: azdo.Spec.ImagePullSecretRef,
+			},
+		}
+	}
 	desiredPod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      strings.ToLower(azdo.Spec.PoolName),
+			Name:      req.Name,      // strings.ToLower(azdo.Spec.PoolName),
 			Namespace: req.Namespace, // req.Namespace,
 			Labels: map[string]string{
 				"app": "azdo-agent",
 			},
 		},
 		Spec: corev1.PodSpec{
+			ImagePullSecrets: imagePullSecrets,
 			Containers: []corev1.Container{
 				{
 					Name:  strings.ToLower(azdo.Spec.PoolName),
 					Image: azdo.Spec.Image,
 					Env:   env,
+				},
+			},
+			Volumes: []corev1.Volume{
+				{
+					Name: "docker-sock",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: "/var/run/docker.sock",
+							Type: func() *corev1.HostPathType {
+								var hostPathType corev1.HostPathType = corev1.HostPathSocket
+								return &hostPathType
+							}(),
+						},
+					},
 				},
 			},
 			RestartPolicy: corev1.RestartPolicyAlways,
