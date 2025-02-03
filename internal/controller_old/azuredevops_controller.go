@@ -120,20 +120,6 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 					Env:   env,
 				},
 			},
-			Volumes: []corev1.Volume{
-				{
-					Name: "docker-sock",
-					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: "/var/run/docker.sock",
-							Type: func() *corev1.HostPathType {
-								var hostPathType corev1.HostPathType = corev1.HostPathSocket
-								return &hostPathType
-							}(),
-						},
-					},
-				},
-			},
 			RestartPolicy: corev1.RestartPolicyAlways,
 		},
 	}

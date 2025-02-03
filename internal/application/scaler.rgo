@@ -1,9 +1,0 @@
-
-
-func (s *AzureDevopsScaler) ScaleIfNeeded(ctx context.Context, poolName string) error {
-		length, err := s.queueService.GetQueueLength(poolName)
-		if err != nil {
-				return err
-		}
-		
-}

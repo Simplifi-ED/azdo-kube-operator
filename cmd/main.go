@@ -38,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	agentsv0beta0 "fr.simplified/azuredevops/api/v0beta0"
-	"fr.simplified/azuredevops/internal/controller"
+	"fr.simplified/azuredevops/internal/interfaces/controller"
 	// +kubebuilder:scaffold:imports
 )
 

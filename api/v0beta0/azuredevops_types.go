@@ -17,6 +17,7 @@ limitations under the License.
 package v0beta0
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -34,8 +35,9 @@ type AzureDevOpsSpec struct {
 	PoolName string `json:"poolName,omitempty"`
 	Image    string `json:"image,omitempty"`
 	// +kubebuilder:validation:Optional
-	ImagePullSecretRef string `json:"imagePullSecretRef,omitempty"`
-	PatSecretRef       string `json:"patSecretRef,omitempty"`
+	ImagePullSecretRef string                      `json:"imagePullSecretRef,omitempty"`
+	PatSecretRef       string                      `json:"patSecretRef,omitempty"`
+	Resources          corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 // AzureDevOpsStatus defines the observed state of AzureDevOps.
