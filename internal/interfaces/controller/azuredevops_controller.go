@@ -22,6 +22,14 @@ import (
 	agentsv0beta0 "fr.simplified/azuredevops/api/v0beta0"
 )
 
+// RBAC markers for the operator:
+// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops/finalizers,verbs=update
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+
 // AzureDevOpsReconciler est le contrôleur pour AzureDevOps
 type AzureDevOpsReconciler struct {
 	client.Client
@@ -55,7 +63,12 @@ func (r *AzureDevOpsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// Reconcile implémente la logique de reconciliation
+// Reconcile contains the reconciliation logic.
+// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops/finalizers,verbs=update
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling AzureDevOps resource", "name", req.Name, "namespace", req.Namespace)
@@ -95,19 +108,20 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Initialiser le client Azure DevOps avec le PAT Token et l'URL
-	azureDevOpsClient := azuredevops.NewAzureDevOpsClient(patToken, azdoModel.OrgURL)
+	azureDevOpsClient := azuredevops.NewAzureDevOpsClient(patToken, azdoModel.OrgURL, azdoModel.Project)
 
 	// Mettre à jour le Usecase avec le client Azure DevOps
 	r.Usecase.AzureDevOpsClient = azureDevOpsClient
 
 	// Gérer la logique de reconciliation via le Usecase
-	if err := r.Usecase.Handle(ctx, azdoModel); err != nil {
+	result, err := r.Usecase.Handle(ctx, &cr)
+	if err != nil {
 		logger.Error(err, "Usecase Handle failed")
-		return ctrl.Result{}, err
+		return result, err
 	}
 
 	logger.Info("Successfully reconciled AzureDevOps resource")
-	return ctrl.Result{}, nil
+	return result, nil
 }
 
 // getPATToken récupère le token PAT depuis le Secret
@@ -115,7 +129,7 @@ func (r *AzureDevOpsReconciler) getPATToken(ctx context.Context, secretName stri
 	var secret corev1.Secret
 	if err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: "default"}, &secret); err != nil {
 		if apierrors.IsNotFound(err) {
-			return "", fmt.Errorf("Secret %s non trouvé dans le namespace default", secretName)
+			return "", fmt.Errorf("secret %s non trouvé dans le namespace default", secretName)
 		}
 		return "", fmt.Errorf("erreur lors de la récupération du Secret %s: %w", secretName, err)
 	}

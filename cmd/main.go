@@ -39,6 +39,7 @@ import (
 
 	agentsv0beta0 "fr.simplified/azuredevops/api/v0beta0"
 	"fr.simplified/azuredevops/internal/interfaces/controller"
+	// "fr.simplified/azuredevops/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 

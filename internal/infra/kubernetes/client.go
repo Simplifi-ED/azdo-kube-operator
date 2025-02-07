@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"fr.simplified/azuredevops/api/v0beta0"
 	"fr.simplified/azuredevops/internal/domain/models"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -20,7 +21,7 @@ import (
 // Client defines the Kubernetes client interface
 type Client interface {
 	ValidateSecrets(ctx context.Context, patSecretRef, imagePullSecretRef string) error
-	ReconcileDeployment(ctx context.Context, azdo models.AzureDevOps, replicas int32) error
+	ReconcileDeployment(ctx context.Context, azdo *v0beta0.AzureDevOps, replicas int32) error
 }
 
 // KubernetesClient implements the Client interface
@@ -66,8 +67,25 @@ func (k *KubernetesClient) ValidateSecrets(ctx context.Context, patSecretRef, im
 	return nil
 }
 
-func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, azdo models.AzureDevOps, replicas int32) error {
+func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.AzureDevOps, replicas int32) error {
 	logger := log.FromContext(ctx)
+
+	azdo := models.AzureDevOps{
+		TypeMeta:           cr.TypeMeta,
+		ObjectMeta:         cr.ObjectMeta,
+		OrgURL:             cr.Spec.OrgURL,
+		Project:            cr.Spec.Project,
+		PoolName:           cr.Spec.PoolName,
+		Image:              cr.Spec.Image,
+		PatSecretRef:       cr.Spec.PatSecretRef,
+		ImagePullSecretRef: cr.Spec.ImagePullSecretRef,
+		Resources: models.ResourceRequirements{
+			CPURequest:    cr.Spec.Resources.Requests.Cpu().String(),
+			MemoryRequest: cr.Spec.Resources.Requests.Memory().String(),
+			CPULimit:      cr.Spec.Resources.Limits.Cpu().String(),
+			MemoryLimit:   cr.Spec.Resources.Limits.Memory().String(),
+		},
+	}
 
 	// Définir les variables d'environnement
 	env := []corev1.EnvVar{
@@ -116,10 +134,10 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, azdo models.
 			corev1.ResourceCPU:    resource.MustParse("50m"),
 			corev1.ResourceMemory: resource.MustParse("64Mi"),
 		},
-		Limits: corev1.ResourceList{
-			corev1.ResourceCPU:    resource.MustParse("100m"),
-			corev1.ResourceMemory: resource.MustParse("128Mi"),
-		},
+		// Limits: corev1.ResourceList{
+		// 	corev1.ResourceCPU:    resource.MustParse("100m"),
+		// 	corev1.ResourceMemory: resource.MustParse("128Mi"),
+		// },
 	}
 
 	// Définir le Deployment désiré
@@ -152,6 +170,9 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, azdo models.
 							Image:     azdo.Image,
 							Env:       env,
 							Resources: resources,
+							Command:   []string{"/start.sh"},
+							// Optionally, you can also specify arguments.
+							Args: []string{"--once"},
 						},
 					},
 					RestartPolicy: corev1.RestartPolicyAlways,
@@ -161,7 +182,7 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, azdo models.
 	}
 
 	// Définir la référence propriétaire
-	if err := ctrl.SetControllerReference(&azdo, desiredDeployment, k.Client.Scheme()); err != nil {
+	if err := ctrl.SetControllerReference(cr, desiredDeployment, k.Client.Scheme()); err != nil {
 		logger.Error(err, "impossible de définir la référence propriétaire sur le Deployment")
 		return err
 	}
@@ -208,6 +229,5 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, azdo models.
 			}
 		}
 	}
-
 	return nil
 }
