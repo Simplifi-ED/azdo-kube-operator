@@ -21,5 +21,6 @@ kind: Secret
 metadata:
   name: azdopat
 data:
+  # dont dream, it's not active ;)
   PAT: MTc2SWhlNWVoSmpxakMxSGVXeEYybGJGTmFrWXhUaTVxaXdjNU5Gckc1QUxnOFNzUDhhdEpRUUo5OUJBQUNBQUFBQU1zb01nQUFBU0FaRE9sYkY4Cg==
 
