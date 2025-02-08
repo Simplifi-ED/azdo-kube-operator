@@ -1,5 +1,3 @@
-Below is the complete README in Markdown format:
-
 # azdo-agent-operator
 
 A Kubernetes operator that automates the lifecycle management of Azure DevOps agents. It dynamically provisions, scales, and decommissions agent pods based on the demand from your Azure DevOps pipelines.
