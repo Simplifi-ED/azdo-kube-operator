@@ -37,7 +37,7 @@ jobs:
 
       - name: Build and push Docker image
         env:
-          IMG: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}:${{ github.ref_name }}
+          IMG: ${{ env.DOCKER_REGISTRY }}/azure-devops-operator:${{ github.ref_name }}
         run: |
           IMG_INPUT=${{ env.IMG }}
           IMG=${IMG_INPUT,,} make docker-buildx
