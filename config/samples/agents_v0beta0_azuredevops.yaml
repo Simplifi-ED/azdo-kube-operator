@@ -48,9 +48,10 @@ spec:
   poolName: AzDoTest
   patSecretRef: azdopat
   # image: hello-world
-  image: ghcr.io/etiennedeneuve/azdo-agent:ubu-0.0.3
+  image: ghcr.io/etiennedeneuve/azdo-agent:ubu-0.0.4
   imagePullSecretRef: my-secret
-
+  mode: Deployment
+  docker: dind
 # ---
 # apiVersion: v1
 # kind: Secret

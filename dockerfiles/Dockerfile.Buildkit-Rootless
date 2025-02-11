@@ -1,0 +1,13 @@
+FROM moby/buildkit:latest
+
+# Install dependencies for rootless operation:
+# - fuse-overlayfs: for a user-space overlay filesystem
+# - shadow: provides newuidmap and newgidmap (since uidmap is not available on Alpine)
+RUN apk add --no-cache fuse-overlayfs shadow
+
+# Tell BuildKit to use fuse-overlayfs as the snapshotter
+ENV BUILDKIT_SNAPSHOTTER=fuse-overlayfs
+
+# Optionally expose the GRPC endpoint without TLS on port 1234
+# (Your buildkitd.toml can be used for further configuration)
+CMD ["buildkitd", "--addr", "tcp://0.0.0.0:1234"]
