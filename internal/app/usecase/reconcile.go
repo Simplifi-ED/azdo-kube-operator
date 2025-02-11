@@ -44,7 +44,6 @@ func (r *Reconcile) Handle(ctx context.Context, azdo *v0beta0.AzureDevOps) (ctrl
 	// Déterminer le nombre désiré de réplicas
 	logger.Info("Queue is", "queueLength", queueLength)
 	desiredReplicas := determineDesiredReplicas(queueLength, logger)
-	logger.Info("Queue is", "queueLength", queueLength)
 
 	// Gérer le Deployment Kubernetes
 	if err := r.KubernetesClient.ReconcileDeployment(ctx, azdo, desiredReplicas); err != nil {

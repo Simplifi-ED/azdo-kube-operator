@@ -39,9 +39,13 @@ spec:
           spec:
             description: AzureDevOpsSpec defines the desired state of AzureDevOps.
             properties:
+              docker:
+                type: string
               image:
                 type: string
               imagePullSecretRef:
+                type: string
+              mode:
                 type: string
               orgURL:
                 description: Foo is an example field of AzureDevOps. Edit azuredevops_types.go

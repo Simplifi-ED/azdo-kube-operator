@@ -38,6 +38,8 @@ type AzureDevOpsSpec struct {
 	ImagePullSecretRef string                      `json:"imagePullSecretRef,omitempty"`
 	PatSecretRef       string                      `json:"patSecretRef,omitempty"`
 	Resources          corev1.ResourceRequirements `json:"resources,omitempty"`
+	Mode               string                      `json:"mode,omitempty"`
+	Docker             string                      `json:"docker,omitempty"`
 }
 
 // AzureDevOpsStatus defines the observed state of AzureDevOps.

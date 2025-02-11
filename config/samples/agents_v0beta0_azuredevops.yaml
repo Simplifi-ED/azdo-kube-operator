@@ -1,10 +1,46 @@
+# apiVersion: agents.fr.simplified/v0beta0
+# kind: AzureDevOps
+# metadata:
+#   labels:
+#     app.kubernetes.io/name: azdo-agent-operator
+#     app.kubernetes.io/managed-by: kustomize
+#   name: azuredevops-sample-deploy
+# spec:
+#   # TODO(user): Add fields here
+#   orgURL: "https://dev.azure.com/simplifi-ed"
+#   project: Simplifactu
+#   poolName: AzDoTest
+#   patSecretRef: azdopat
+#   # image: hello-world
+#   image: ghcr.io/etiennedeneuve/azdo-agent:ubu-0.0.3
+#   imagePullSecretRef: my-secret
+#   mode: Deployement
+# ---
+# apiVersion: agents.fr.simplified/v0beta0
+# kind: AzureDevOps
+# metadata:
+#   labels:
+#     app.kubernetes.io/name: azdo-agent-operator
+#     app.kubernetes.io/managed-by: kustomize
+#   name: azuredevops-sample-job
+# spec:
+#   # TODO(user): Add fields here
+#   orgURL: "https://dev.azure.com/simplifi-ed"
+#   project: Simplifactu
+#   poolName: AzDoTest
+#   patSecretRef: azdopat
+#   # image: hello-world
+#   image: ghcr.io/etiennedeneuve/azdo-agent:ubu-0.0.3
+#   imagePullSecretRef: my-secret
+#   mode: Jobs
+# ---
 apiVersion: agents.fr.simplified/v0beta0
 kind: AzureDevOps
 metadata:
   labels:
     app.kubernetes.io/name: azdo-agent-operator
     app.kubernetes.io/managed-by: kustomize
-  name: azuredevops-sample
+  name: azuredevops-sample-dind
 spec:
   # TODO(user): Add fields here
   orgURL: "https://dev.azure.com/simplifi-ed"
@@ -12,15 +48,15 @@ spec:
   poolName: AzDoTest
   patSecretRef: azdopat
   # image: hello-world
-  image: ghcr.io/etiennedeneuve/azdo-agent:ubu-0.0.1
+  image: ghcr.io/etiennedeneuve/azdo-agent:ubu-0.0.3
   imagePullSecretRef: my-secret
 
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: azdopat
-data:
-  # dont dream, it's not active ;)
-  PAT: MTc2SWhlNWVoSmpxakMxSGVXeEYybGJGTmFrWXhUaTVxaXdjNU5Gckc1QUxnOFNzUDhhdEpRUUo5OUJBQUNBQUFBQU1zb01nQUFBU0FaRE9sYkY4Cg==
+# ---
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: azdopat
+# data:
+#   # dont dream, it's not active ;)
+#   PAT: MTc2SWhlNWVoSmpxakMxSGVXeEYybGJGTmFrWXhUaTVxaXdjNU5Gckc1QUxnOFNzUDhhdEpRUUo5OUJBQUNBQUFBQU1zb01nQUFBU0FaRE9sYkY4Cg==
 

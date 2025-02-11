@@ -15,6 +15,8 @@ type AzureDevOps struct {
 	PatSecretRef       string
 	ImagePullSecretRef string
 	Resources          ResourceRequirements
+	Mode               string
+	Docker             string
 }
 
 // ResourceRequirements définit les requêtes et limites de ressources
