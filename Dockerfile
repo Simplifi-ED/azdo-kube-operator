@@ -3,6 +3,12 @@ FROM docker.io/golang:1.23 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
+LABEL org.opencontainers.image.source="https://github.com/Simplifi-ED/azdo-kube-operator" \
+    org.opencontainers.image.title="AzDo Operator" \
+    org.opencontainers.image.description="Azure DevOps Agent Kubernetes operator" \
+    org.opencontainers.image.authors="etienne@simplified.fr" \
+    org.opencontainers.image.vendor="simplifi-ed"
+
 WORKDIR /workspace
 # Copy the Go Modules manifests
 COPY go.mod go.mod
