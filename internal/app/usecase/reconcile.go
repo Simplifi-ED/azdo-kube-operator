@@ -31,7 +31,7 @@ func NewReconcile(k kubernetes.Client, a azuredevops.Client) *Reconcile {
 func (r *Reconcile) Handle(ctx context.Context, azdo *v0beta0.AzureDevOps) (ctrl.Result, error) {
 	logger := ctrlLog.FromContext(ctx)
 	// Valider et récupérer les Secrets
-	if err := r.KubernetesClient.ValidateSecrets(ctx, azdo.Spec.PatSecretRef, azdo.Spec.ImagePullSecretRef); err != nil {
+	if err := r.KubernetesClient.ValidateSecrets(ctx, azdo.Namespace, azdo.Spec.PatSecretRef, azdo.Spec.ImagePullSecretRef); err != nil {
 		return ctrl.Result{}, fmt.Errorf("validation des secrets échouée: %w", err)
 	}
 

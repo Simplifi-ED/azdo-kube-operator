@@ -4,5 +4,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: ghcr.io/etiennedeneuve/azure-devops-operator
-  newTag: v0.1.72
+  newName: simplifiedreg.azurecr.io/azdo-operator
+  newTag: 0.0.1

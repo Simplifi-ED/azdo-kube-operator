@@ -32,12 +32,15 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 		ImagePullSecretRef: cr.Spec.ImagePullSecretRef,
 		Mode:               cr.Spec.Mode,
 		Docker:             cr.Spec.Docker,
+		Tolerations:        cr.Spec.Tolerations,
+		Affinity:           cr.Spec.Affinity,
 		Resources: models.ResourceRequirements{
 			CPURequest:    cr.Spec.Resources.Requests.Cpu().String(),
 			MemoryRequest: cr.Spec.Resources.Requests.Memory().String(),
 			CPULimit:      cr.Spec.Resources.Limits.Cpu().String(),
 			MemoryLimit:   cr.Spec.Resources.Limits.Memory().String(),
 		},
+		Namespace: cr.Namespace,
 	}
 
 	// Variables d'environnement de base pour l'agent.
@@ -92,14 +95,16 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 		},
 		Spec: corev1.PodSpec{
 			ImagePullSecrets: imagePullSecrets,
+			Tolerations:      azdo.Tolerations,
+			Affinity:         azdo.Affinity,
 			Containers: []corev1.Container{
 				{
 					Name:      "azdo-agent",
 					Image:     azdo.Image,
 					Env:       env,
 					Resources: resources,
-					Command:   []string{"./start.sh"},
-					Args:      []string{"--once"},
+					// Command:   []string{"./start.sh"},
+					Args: []string{"--once"},
 				},
 			},
 			RestartPolicy: corev1.RestartPolicyAlways,
@@ -200,6 +205,15 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 				Name:      azdo.Name,
 				Namespace: azdo.Namespace,
 				Labels:    map[string]string{"app": "azdo-agent", "name": azdo.Name},
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: cr.APIVersion,
+						Kind:       cr.Kind,
+						Name:       cr.Name,
+						UID:        cr.UID,
+						Controller: ptr.To(true),
+					},
+				},
 			},
 			Spec: batchv1.JobSpec{
 				Template: podTemplateSpec,
@@ -212,16 +226,32 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 		desiredDeployment := &appsv1.Deployment{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      azdo.Name,
-				Namespace: "default", // Rendre cela configurable si besoin.
+				Namespace: azdo.Namespace,
 				Labels:    map[string]string{"app": "azdo-agent", "name": azdo.Name},
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						APIVersion: cr.APIVersion,
+						Kind:       cr.Kind,
+						Name:       cr.Name,
+						UID:        cr.UID,
+						Controller: ptr.To(true),
+					},
+				},
 			},
 			Spec: appsv1.DeploymentSpec{
 				Replicas: &replicas,
 				Selector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{"app": "azdo-agent"},
+					MatchLabels: map[string]string{
+						"app": "azdo-agent",
+					},
 				},
 				Template: podTemplateSpec,
 			},
+		}
+
+		desiredDeployment.Spec.Template.ObjectMeta.Labels = map[string]string{
+			"app":  "azdo-agent",
+			"name": azdo.Name,
 		}
 		return reconcileDeploymentInternal(ctx, cr, desiredDeployment, k.Client, logger)
 	}

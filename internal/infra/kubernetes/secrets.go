@@ -11,31 +11,51 @@ import (
 )
 
 // ValidateSecrets vérifie que les secrets requis existent.
-func (k *KubernetesClient) ValidateSecrets(ctx context.Context, patSecretRef, imagePullSecretRef string) error {
+func (k *KubernetesClient) ValidateSecrets(ctx context.Context, namespace, patSecretRef, imagePullSecretRef string) error {
 	logger := log.FromContext(ctx)
 
+	// Validate PAT Secret
 	var patSecret corev1.Secret
-	if err := k.Client.Get(ctx, types.NamespacedName{Name: patSecretRef, Namespace: "default"}, &patSecret); err != nil {
+	err := k.Client.Get(ctx, types.NamespacedName{Name: patSecretRef, Namespace: namespace}, &patSecret)
+	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return fmt.Errorf("PAT Secret %s non trouvé dans le namespace default", patSecretRef)
+			// If not found in current namespace, try default
+			err = k.Client.Get(ctx, types.NamespacedName{Name: patSecretRef, Namespace: "default"}, &patSecret)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return fmt.Errorf("PAT Secret %s not found in namespace %s or default", patSecretRef, namespace)
+				}
+				return fmt.Errorf("error retrieving PAT Secret: %w", err)
+			}
+		} else {
+			return fmt.Errorf("error retrieving PAT Secret: %w", err)
 		}
-		return fmt.Errorf("erreur lors de la récupération du PAT Secret : %w", err)
 	}
 
 	if _, exists := patSecret.Data["PAT"]; !exists {
-		return fmt.Errorf("clé 'PAT' non trouvée dans le Secret %s", patSecretRef)
+		return fmt.Errorf("'PAT' key not found in Secret %s", patSecretRef)
 	}
 
+	// Validate ImagePull Secret if provided
 	if imagePullSecretRef != "" {
 		var pullSecret corev1.Secret
-		if err := k.Client.Get(ctx, types.NamespacedName{Name: imagePullSecretRef, Namespace: "default"}, &pullSecret); err != nil {
+		err = k.Client.Get(ctx, types.NamespacedName{Name: imagePullSecretRef, Namespace: namespace}, &pullSecret)
+		if err != nil {
 			if apierrors.IsNotFound(err) {
-				return fmt.Errorf("ImagePullSecret %s non trouvé dans le namespace default", imagePullSecretRef)
+				// If not found in current namespace, try default
+				err = k.Client.Get(ctx, types.NamespacedName{Name: imagePullSecretRef, Namespace: "default"}, &pullSecret)
+				if err != nil {
+					if apierrors.IsNotFound(err) {
+						return fmt.Errorf("ImagePullSecret %s not found in namespace %s or default", imagePullSecretRef, namespace)
+					}
+					return fmt.Errorf("error retrieving ImagePullSecret: %w", err)
+				}
+			} else {
+				return fmt.Errorf("error retrieving ImagePullSecret: %w", err)
 			}
-			return fmt.Errorf("erreur lors de la récupération de l'ImagePullSecret : %w", err)
 		}
 	}
 
-	logger.Info("Tous les secrets référencés sont présents")
+	logger.Info("All referenced secrets are present")
 	return nil
 }

@@ -9,7 +9,7 @@ import (
 
 // Client définit l'interface de notre client Kubernetes.
 type Client interface {
-	ValidateSecrets(ctx context.Context, patSecretRef, imagePullSecretRef string) error
+	ValidateSecrets(ctx context.Context, namespace, patSecretRef, imagePullSecretRef string) error
 	ReconcileDeployment(ctx context.Context, azdo *v0beta0.AzureDevOps, replicas int32) error
 }
 

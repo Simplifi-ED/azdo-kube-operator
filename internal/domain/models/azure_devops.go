@@ -1,6 +1,7 @@
 package models
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -8,6 +9,7 @@ import (
 type AzureDevOps struct {
 	metav1.TypeMeta    `json:",inline"`
 	metav1.ObjectMeta  `json:"metadata,omitempty"`
+	Namespace          string
 	OrgURL             string
 	PoolName           string
 	Project            string
@@ -17,6 +19,8 @@ type AzureDevOps struct {
 	Resources          ResourceRequirements
 	Mode               string
 	Docker             string
+	Tolerations        []corev1.Toleration
+	Affinity           *corev1.Affinity
 }
 
 // ResourceRequirements définit les requêtes et limites de ressources
