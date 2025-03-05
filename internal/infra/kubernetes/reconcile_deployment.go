@@ -34,7 +34,7 @@ func reconcileDeploymentInternal(ctx context.Context, cr metav1.Object, desiredD
 		needsUpdate := false
 
 		// 1. Check replicas
-		if !equality.Semantic.DeepEqual(existing.Spec.Replicas, desiredDeployment.Spec.Replicas) {
+		if existing.Spec.Replicas == nil || desiredDeployment.Spec.Replicas == nil || *existing.Spec.Replicas != *desiredDeployment.Spec.Replicas {
 			existing.Spec.Replicas = desiredDeployment.Spec.Replicas
 			needsUpdate = true
 		}

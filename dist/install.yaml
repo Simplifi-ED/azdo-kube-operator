@@ -968,7 +968,8 @@ spec:
                     type: object
                 type: object
               docker:
-                description: Docker specifies Docker-related configuration
+                description: 'Docker specifies Docker-related configuration (Possible
+                  values: dind, buildkit)'
                 type: string
               image:
                 description: Image is the container image for the Azure DevOps agent
@@ -1482,7 +1483,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: simplifiedreg.azurecr.io/azdo-operator:0.0.1
+        image: simplifiedreg.azurecr.io/azdo-operator:0.0.2
         livenessProbe:
           httpGet:
             path: /healthz

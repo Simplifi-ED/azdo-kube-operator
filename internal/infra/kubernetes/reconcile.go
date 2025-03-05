@@ -249,10 +249,6 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 			},
 		}
 
-		desiredDeployment.Spec.Template.ObjectMeta.Labels = map[string]string{
-			"app":  "azdo-agent",
-			"name": azdo.Name,
-		}
 		return reconcileDeploymentInternal(ctx, cr, desiredDeployment, k.Client, logger)
 	}
 
