@@ -83,7 +83,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		},
 	}
 
-	patToken, err := r.getPATToken(ctx, azdoModel.PatSecretRef)
+	patToken, err := r.getPATToken(ctx, req, azdoModel.PatSecretRef)
 	if err != nil {
 		logger.Error(err, "Failed to get PAT token")
 		return ctrl.Result{}, err
@@ -103,19 +103,36 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return result, nil
 }
 
-func (r *AzureDevOpsReconciler) getPATToken(ctx context.Context, secretName string) (string, error) {
+func (r *AzureDevOpsReconciler) getPATToken(ctx context.Context, req ctrl.Request, secretName string) (string, error) {
+	// First, try to get the secret in the CR's namespace
 	var secret corev1.Secret
-	if err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: "default"}, &secret); err != nil {
-		if apierrors.IsNotFound(err) {
-			return "", fmt.Errorf("secret %s non trouvé dans le namespace default", secretName)
-		}
-		return "", fmt.Errorf("erreur lors de la récupération du Secret %s: %w", secretName, err)
-	}
+	var exists bool
+	err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: req.Namespace}, &secret)
 
 	pat, exists := secret.Data["PAT"]
-	if !exists {
-		return "", fmt.Errorf("clé 'PAT' non trouvée dans le Secret %s", secretName)
+	if err == nil {
+		// Secret found in CR's namespace
+		if exists {
+			return string(pat), nil
+		}
 	}
 
-	return string(pat), nil
+	// If not found in CR's namespace or PAT key missing, try default namespace
+	if apierrors.IsNotFound(err) || !exists {
+		err = r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: "default"}, &secret)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return "", fmt.Errorf("secret %s not found in CR namespace or default namespace", secretName)
+			}
+			return "", fmt.Errorf("error retrieving Secret %s: %w", secretName, err)
+		}
+
+		pat, exists := secret.Data["PAT"]
+		if !exists {
+			return "", fmt.Errorf("'PAT' key not found in Secret %s", secretName)
+		}
+		return string(pat), nil
+	}
+
+	return "", fmt.Errorf("unexpected error retrieving Secret %s", secretName)
 }

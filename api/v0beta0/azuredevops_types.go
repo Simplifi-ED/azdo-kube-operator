@@ -26,20 +26,49 @@ import (
 
 // AzureDevOpsSpec defines the desired state of AzureDevOps.
 type AzureDevOpsSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// OrgURL is the Azure DevOps organization URL
+	// +kubebuilder:validation:Required
+	OrgURL string `json:"orgURL"`
 
-	// Foo is an example field of AzureDevOps. Edit azuredevops_types.go to remove/update
-	OrgURL   string `json:"orgURL,omitempty"`
-	Project  string `json:"project,omitempty"`
-	PoolName string `json:"poolName,omitempty"`
-	Image    string `json:"image,omitempty"`
+	// Project is the Azure DevOps project name
+	// +kubebuilder:validation:Required
+	Project string `json:"project"`
+
+	// PoolName is the name of the Azure DevOps agent pool
+	// +kubebuilder:validation:Required
+	PoolName string `json:"poolName"`
+
+	// Image is the container image for the Azure DevOps agent
+	// +kubebuilder:validation:Required
+	Image string `json:"image"`
+
+	// ImagePullSecretRef is the name of the secret used for pulling the agent image
 	// +kubebuilder:validation:Optional
-	ImagePullSecretRef string                      `json:"imagePullSecretRef,omitempty"`
-	PatSecretRef       string                      `json:"patSecretRef,omitempty"`
-	Resources          corev1.ResourceRequirements `json:"resources,omitempty"`
-	Mode               string                      `json:"mode,omitempty"`
-	Docker             string                      `json:"docker,omitempty"`
+	ImagePullSecretRef string `json:"imagePullSecretRef,omitempty"`
+
+	// PatSecretRef is the name of the secret containing the Personal Access Token (PAT)
+	// +kubebuilder:validation:Required
+	PatSecretRef string `json:"patSecretRef"`
+
+	// Resources specifies the computational resources for the agent
+	// +kubebuilder:validation:Optional
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
+
+	// Mode defines the operational mode of the agent (e.g., deployment, service)
+	// +kubebuilder:validation:Optional
+	Mode string `json:"mode,omitempty"`
+
+	// Docker specifies Docker-related configuration (Possible values: dind, buildkit)
+	// +kubebuilder:validation:Optional
+	Docker string `json:"docker,omitempty"`
+
+	// Tolerations specifies the tolerations for the agent pod
+	// +kubebuilder:validation:Optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// Affinity specifies the affinity for the agent pod
+	// +kubebuilder:validation:Optional
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
 }
 
 // AzureDevOpsStatus defines the observed state of AzureDevOps.
