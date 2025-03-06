@@ -119,6 +119,28 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 		},
 	})
 
+	podTemplateSpec.Spec.Volumes = append(podTemplateSpec.Spec.Volumes, corev1.Volume{
+		Name: "signal-volume",
+		VolumeSource: corev1.VolumeSource{
+			EmptyDir: &corev1.EmptyDirVolumeSource{},
+		},
+	})
+
+	for i := range podTemplateSpec.Spec.Containers {
+		if podTemplateSpec.Spec.Containers[i].Name == "azdo-agent" {
+			podTemplateSpec.Spec.Containers[i].Command = []string{"/bin/sh", "-c"}
+			podTemplateSpec.Spec.Containers[i].Args = []string{
+				"trap 'touch /usr/share/pod/done' EXIT\n./start.sh --once",
+			}
+			podTemplateSpec.Spec.Containers[i].VolumeMounts = append(
+				podTemplateSpec.Spec.Containers[i].VolumeMounts,
+				corev1.VolumeMount{
+					Name:      "signal-volume",
+					MountPath: "/usr/share/pod",
+				},
+			)
+		}
+	}
 	// Ajout du sidecar selon le mode configuré dans le CR.
 	switch azdo.Docker {
 	case "buildkit":
@@ -169,8 +191,18 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 
 		// Ajout du sidecar dind-rootless.
 		dindContainer := corev1.Container{
-			Name:  "docker-dind-rootless",
-			Image: "docker:dind-rootless",
+			Name:    "docker-dind-rootless",
+			Image:   "docker:dind-rootless",
+			Command: []string{"/bin/sh", "-c"},
+			Args: []string{
+				"dockerd-entrypoint.sh &\n" +
+					"while ! test -f /usr/share/pod/done; do\n" +
+					"  echo 'Waiting for the agent pod to finish...'\n" +
+					"  sleep 5\n" +
+					"done\n" +
+					"echo 'Agent pod finished, exiting'\n" +
+					"exit 0",
+			},
 			Env: []corev1.EnvVar{
 				{
 					Name:  "DOCKER_TLS_CERTDIR",
@@ -189,6 +221,11 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 				{
 					Name:      "docker-socket",
 					MountPath: "/run/user/1000",
+				},
+				{
+					Name:      "signal-volume",
+					MountPath: "/usr/share/pod",
+					ReadOnly:  true,
 				},
 			},
 		}
