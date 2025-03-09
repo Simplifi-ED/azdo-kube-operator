@@ -104,7 +104,7 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 					Env:       env,
 					Resources: resources,
 					// Command:   []string{"./start.sh"},
-					Args: []string{"--once"},
+					// Args: []string{"--once"},
 				},
 			},
 			RestartPolicy: corev1.RestartPolicyAlways,
@@ -130,7 +130,7 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 		if podTemplateSpec.Spec.Containers[i].Name == "azdo-agent" {
 			podTemplateSpec.Spec.Containers[i].Command = []string{"/bin/sh", "-c"}
 			podTemplateSpec.Spec.Containers[i].Args = []string{
-				"trap 'touch /usr/share/pod/done' EXIT\n./start.sh --once",
+				"trap 'touch /usr/share/pod/done' EXIT\n./start.sh",
 			}
 			podTemplateSpec.Spec.Containers[i].VolumeMounts = append(
 				podTemplateSpec.Spec.Containers[i].VolumeMounts,
