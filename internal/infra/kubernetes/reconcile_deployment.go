@@ -50,59 +50,63 @@ func reconcileDeploymentInternal(ctx context.Context, cr metav1.Object, desiredD
 		if !equality.Semantic.DeepEqual(updated.Spec.Replicas, desiredDeployment.Spec.Replicas) {
 			updated.Spec.Replicas = desiredDeployment.Spec.Replicas
 			needsUpdate = true
-			logger.Info("Deployment replicas changed",
+			// Keep important scaling info at default level
+			logger.Info("Scaling deployment",
 				"name", updated.Name,
-				"current", updated.Spec.Replicas,
-				"desired", desiredDeployment.Spec.Replicas)
+				"from", existing.Spec.Replicas,
+				"to", desiredDeployment.Spec.Replicas)
 		}
 
 		// 2. Check and update pod template spec
 		if !equality.Semantic.DeepEqual(updated.Spec.Template.Spec, desiredDeployment.Spec.Template.Spec) {
 			updated.Spec.Template.Spec = desiredDeployment.Spec.Template.Spec
 			needsUpdate = true
-			logger.Info("Deployment pod template spec changed", "name", updated.Name)
+			logger.V(1).Info("Pod template changed", "name", updated.Name)
 		}
 
 		// 3. Check and update labels
 		if !equality.Semantic.DeepEqual(updated.Spec.Template.Labels, desiredDeployment.Spec.Template.Labels) {
 			updated.Spec.Template.Labels = desiredDeployment.Spec.Template.Labels
 			needsUpdate = true
-			logger.Info("Deployment labels changed", "name", updated.Name)
+			logger.V(1).Info("Pod labels changed", "name", updated.Name)
 		}
 
 		// 4. Check and update annotations
 		if !equality.Semantic.DeepEqual(updated.Spec.Template.Annotations, desiredDeployment.Spec.Template.Annotations) {
 			updated.Spec.Template.Annotations = desiredDeployment.Spec.Template.Annotations
 			needsUpdate = true
-			logger.Info("Deployment annotations changed", "name", updated.Name)
+			logger.V(1).Info("Pod annotations changed", "name", updated.Name)
 		}
 
 		// 5. Check and update selector
 		if !equality.Semantic.DeepEqual(updated.Spec.Selector, desiredDeployment.Spec.Selector) {
 			updated.Spec.Selector = desiredDeployment.Spec.Selector
 			needsUpdate = true
-			logger.Info("Deployment selector changed", "name", updated.Name)
+			logger.V(1).Info("Pod selector changed", "name", updated.Name)
 		}
 
 		if !needsUpdate {
-			logger.V(1).Info("No changes needed for Deployment", "name", updated.Name)
+			logger.V(1).Info("No changes needed", "name", updated.Name)
 			return nil
 		}
 
-		logger.Info("Updating Deployment", "name", updated.Name, "namespace", updated.Namespace)
-		err = k8sClient.Update(ctx, updated)
-		if apierrors.IsConflict(err) {
-			logger.V(1).Info("Conflict detected while updating Deployment, retrying",
-				"name", updated.Name,
-				"retry", retries+1)
-			time.Sleep(time.Second * time.Duration(retries+1))
-			continue
-		}
-		if err != nil {
+		// Keep important update info at default level
+		logger.Info("Updating deployment",
+			"name", updated.Name,
+			"namespace", updated.Namespace)
+
+		if err := k8sClient.Update(ctx, updated); err != nil {
+			if apierrors.IsConflict(err) {
+				logger.V(1).Info("Conflict detected, retrying",
+					"name", updated.Name,
+					"retry", retries+1)
+				time.Sleep(time.Second * time.Duration(retries+1))
+				continue
+			}
 			return fmt.Errorf("failed to update Deployment: %w", err)
 		}
 		return nil
 	}
 
-	return fmt.Errorf("failed to update Deployment %s/%s after 3 retries", desiredDeployment.Namespace, desiredDeployment.Name)
+	return fmt.Errorf("failed to update Deployment after retries")
 }
