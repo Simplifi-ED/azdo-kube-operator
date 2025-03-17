@@ -92,6 +92,10 @@ type AzureDevOpsStatus struct {
 	// Conditions represent the latest available observations of the pool's state
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// LastFailedCheck is the last time the queue was checked
+	// +optional
+	LastFailedCheck *metav1.Time `json:"lastFailedCheck,omitempty"`
 }
 
 // +kubebuilder:object:root=true
