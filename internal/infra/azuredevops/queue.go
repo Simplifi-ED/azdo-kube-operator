@@ -55,13 +55,14 @@ type Pool struct {
 }
 
 type QueueResponse struct {
-	Count int         `json:"count"`
-	Value []QueueItem `json:"value"`
+	Count int              `json:"count"`
+	Value []TaskAgentQueue `json:"value"`
 }
 
 type QueueItem struct {
 	RequestID              int            `json:"requestId"`
 	QueueTime              time.Time      `json:"queueTime"`
+	AssignTime             *time.Time     `json:"assignTime"`
 	ServiceOwner           string         `json:"serviceOwner"`
 	HostID                 string         `json:"hostId"`
 	ScopeID                string         `json:"scopeId"`
@@ -142,44 +143,41 @@ func buildAuthHeader(patToken string) string {
 }
 
 func GetQueueIdFromName(ctx context.Context, orgURL, project, patToken, poolName string) (string, error) {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
 
-	url := fmt.Sprintf("%s/_apis/distributedtask/pools?poolName=%s&api-version=7.2-preview.1",
+	url := fmt.Sprintf("%s/_apis/distributedtask/pools?poolName=%s&api-version=7.1",
 		strings.TrimRight(orgURL, "/"), poolName)
+
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return "", fmt.Errorf("échec de la création de la requête pour récupérer l'ID de la queue: %w", err)
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", buildAuthHeader(patToken))
 
-	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("échec de l'exécution de la requête pour récupérer l'ID de la queue: %w", err)
+		return "", fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer func() {
-		_ = resp.Body.Close()
-	}()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return "", fmt.Errorf("statut inattendu %d et échec de la lecture du body: %w", resp.StatusCode, err)
-		}
-		return "", fmt.Errorf("statut inattendu lors de la récupération de la queue: %d - %s", resp.StatusCode, body)
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("unexpected status code: %d - %s", resp.StatusCode, string(body))
 	}
 
 	var queueResp QueueNameResponse
 	if err := json.NewDecoder(resp.Body).Decode(&queueResp); err != nil {
-		return "", fmt.Errorf("échec de l'analyse de la réponse JSON: %w", err)
+		return "", fmt.Errorf("failed to parse JSON response: %w", err)
 	}
 
 	if queueResp.Count == 0 || len(queueResp.Value) == 0 {
-		return "", fmt.Errorf("aucune queue trouvée dans la réponse")
+		return "", fmt.Errorf("no pool found with name: %s", poolName)
 	}
 
 	return fmt.Sprintf("%d", queueResp.Value[0].ID), nil
-
 }
 
 func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string) (int, error) {
@@ -189,10 +187,10 @@ func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get pool ID: %w", err)
 	}
-	logger.Info("Retrieved Pool ID", "poolID", poolID)
+	logger.V(1).Info("Retrieved Pool ID", "poolID", poolID)
 
-	url := fmt.Sprintf("%s/%s/_apis/distributedtask/queues?poolIds=%s&api-version=7.1",
-		a.OrgURL, a.Project, poolID)
+	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%s/jobrequests?api-version=7.1",
+		a.OrgURL, poolID)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -202,8 +200,9 @@ func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string)
 	req.Header.Set("Authorization", buildAuthHeader(a.PATToken))
 
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 10 * time.Second,
 	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute request: %w", err)
@@ -215,16 +214,33 @@ func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string)
 		return 0, fmt.Errorf("unexpected status code: %d - %s", resp.StatusCode, string(body))
 	}
 
-	var queues []TaskAgentQueue
-	if err := json.NewDecoder(resp.Body).Decode(&queues); err != nil {
+	var queueResp struct {
+		Count int         `json:"count"`
+		Value []QueueItem `json:"value"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&queueResp); err != nil {
 		return 0, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	if len(queues) == 0 {
-		return 0, fmt.Errorf("no queue found for pool ID %s", poolID)
+	// If there are no jobs at all, return 0
+	if queueResp.Count == 0 || len(queueResp.Value) == 0 {
+		logger.V(1).Info("No jobs in queue", "poolName", poolName)
+		return 0, nil
 	}
 
-	queueLength := queues[0].Pool.Size
-	logger.Info("Retrieved queue length", "queueLength", queueLength)
-	return queueLength, nil
+	// Count only unassigned jobs
+	pendingJobs := 0
+	for _, job := range queueResp.Value {
+		if job.AssignTime == nil {
+			pendingJobs++
+		}
+	}
+
+	logger.Info("Queue status",
+		"poolName", poolName,
+		"totalJobs", queueResp.Count,
+		"pendingJobs", pendingJobs)
+
+	return pendingJobs, nil
 }

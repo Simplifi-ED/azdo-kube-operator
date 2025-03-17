@@ -73,13 +73,34 @@ type AzureDevOpsSpec struct {
 
 // AzureDevOpsStatus defines the observed state of AzureDevOps.
 type AzureDevOpsStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// CurrentAgents represents the current number of agents in the pool
+	// +optional
+	CurrentAgents int32 `json:"currentAgents,omitempty"`
+
+	// QueuedJobs represents the number of jobs currently queued in the pool
+	// +optional
+	QueuedJobs int32 `json:"queuedJobs,omitempty"`
+
+	// DesiredAgents represents the number of agents the controller wants to have
+	// +optional
+	DesiredAgents int32 `json:"desiredAgents,omitempty"`
+
+	// LastScalingTime is the last time the number of agents was changed
+	// +optional
+	LastScalingTime *metav1.Time `json:"lastScalingTime,omitempty"`
+
+	// Conditions represent the latest available observations of the pool's state
+	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Desired",type="integer",JSONPath=".status.desiredAgents"
+// +kubebuilder:printcolumn:name="Current",type="integer",JSONPath=".status.currentAgents"
+// +kubebuilder:printcolumn:name="Queued",type="integer",JSONPath=".status.queuedJobs"
+// +kubebuilder:printcolumn:name="Mode",type="string",JSONPath=".spec.mode"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // AzureDevOps is the Schema for the azuredevops API.
 type AzureDevOps struct {
