@@ -1188,6 +1188,10 @@ spec:
                   wants to have
                 format: int32
                 type: integer
+              lastFailedCheck:
+                description: LastFailedCheck is the last time the queue was checked
+                format: date-time
+                type: string
               lastScalingTime:
                 description: LastScalingTime is the last time the number of agents
                   was changed

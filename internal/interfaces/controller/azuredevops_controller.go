@@ -101,14 +101,14 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// First update status to Processing
-	r.updateStatus(crCopy, "Processing", "Reconciling Azure DevOps agent pool")
+	r.updateStatus(ctxWithTimeout, crCopy, "Processing", "Reconciling Azure DevOps agent pool")
 
 	// Get PAT token
 	patToken, err := r.getPATToken(ctxWithTimeout, req, cr.Spec.PatSecretRef)
 	if err != nil {
 		logger.Error(err, "Failed to get PAT token")
 		r.Recorder.Event(&cr, corev1.EventTypeWarning, "SecretError", "Failed to get PAT token")
-		r.updateStatus(crCopy, "Failed", fmt.Sprintf("Failed to get PAT token: %v", err))
+		r.updateStatus(ctxWithTimeout, crCopy, "Failed", fmt.Sprintf("Failed to get PAT token: %v", err))
 		return ctrl.Result{RequeueAfter: time.Minute}, err
 	}
 
@@ -122,7 +122,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		logger.Error(err, "Failed to get queue length")
 		r.Recorder.Event(&cr, corev1.EventTypeWarning, "AzureDevOpsError",
 			fmt.Sprintf("Failed to get queue length: %v", err))
-		r.updateStatus(crCopy, "Failed", fmt.Sprintf("Failed to get queue length: %v", err))
+		r.updateStatus(ctxWithTimeout, crCopy, "Failed", fmt.Sprintf("Failed to get queue length: %v", err))
 
 		// Use exponential backoff for queue errors
 		requeueAfter := calculateRequeueInterval(cr.Status.LastFailedCheck)
@@ -139,7 +139,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		logger.Error(err, "Reconciliation failed")
 		r.Recorder.Event(&cr, corev1.EventTypeWarning, "ReconcileError",
 			fmt.Sprintf("Failed to reconcile: %v", err))
-		r.updateStatus(crCopy, "Failed", fmt.Sprintf("Reconciliation failed: %v", err))
+		r.updateStatus(ctxWithTimeout, crCopy, "Failed", fmt.Sprintf("Reconciliation failed: %v", err))
 		return result, err
 	}
 
@@ -173,7 +173,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Update status to Ready
-	r.updateStatus(crCopy, "Ready", "Successfully reconciled Azure DevOps agent pool")
+	r.updateStatus(ctxWithTimeout, crCopy, "Ready", "Successfully reconciled Azure DevOps agent pool")
 	r.Recorder.Event(&cr, corev1.EventTypeNormal, "Reconciled",
 		"Successfully reconciled Azure DevOps agent pool")
 
@@ -217,8 +217,7 @@ func (r *AzureDevOpsReconciler) getPATToken(ctx context.Context, req ctrl.Reques
 
 // Helper function to update status
 // Fix the updateStatus function to properly update all status fields
-func (r *AzureDevOpsReconciler) updateStatus(cr *agentsv0beta0.AzureDevOps, phase string, message string) {
-	ctx := context.Background()
+func (r *AzureDevOpsReconciler) updateStatus(ctx context.Context, cr *agentsv0beta0.AzureDevOps, phase string, message string) {
 	logger := log.FromContext(ctx)
 
 	// Get the latest version of the CR
@@ -238,9 +237,16 @@ func (r *AzureDevOpsReconciler) updateStatus(cr *agentsv0beta0.AzureDevOps, phas
 	// Remove LastScalingTime update as it's not recognized
 
 	// Update the condition
+	var status metav1.ConditionStatus
+	if phase == "Ready" {
+		status = metav1.ConditionTrue
+	} else {
+		status = metav1.ConditionFalse
+	}
+
 	meta.SetStatusCondition(&updatedCR.Status.Conditions, metav1.Condition{
 		Type:               "Ready",
-		Status:             metav1.ConditionTrue,
+		Status:             status,
 		Reason:             phase,
 		Message:            message,
 		LastTransitionTime: metav1.Now(),
