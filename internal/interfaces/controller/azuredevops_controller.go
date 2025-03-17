@@ -25,6 +25,12 @@ import (
 	"k8s.io/client-go/tools/record"
 )
 
+const (
+	defaultReconcileTimeout = 30 * time.Second
+	defaultRequeueInterval  = time.Minute
+	maxRequeueInterval      = 5 * time.Minute
+)
+
 // RBAC markers for the operator:
 // +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops/status,verbs=get;update;patch
@@ -35,13 +41,18 @@ import (
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 type AzureDevOpsReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Usecase  *usecases.Reconcile
-	Recorder record.EventRecorder
+	Scheme           *runtime.Scheme
+	Usecase          *usecases.Reconcile
+	Recorder         record.EventRecorder
+	ReconcileTimeout time.Duration
 }
 
 func (r *AzureDevOpsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Recorder = mgr.GetEventRecorderFor("azuredevops-controller")
+
+	if r.ReconcileTimeout == 0 {
+		r.ReconcileTimeout = defaultReconcileTimeout
+	}
 
 	kubernetesClient := kubernetes.NewKubernetesClient(mgr.GetClient())
 
@@ -60,21 +71,24 @@ func (r *AzureDevOpsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 // Update your Reconcile function
 func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.Info("Reconciling AzureDevOps resource", "name", req.Name, "namespace", req.Namespace)
+	logger := log.FromContext(ctx).WithValues(
+		"name", req.Name,
+		"namespace", req.Namespace,
+	)
+	logger.V(1).Info("Starting reconciliation")
 
-	// Create a context with timeout
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 30*time.Second)
+	// Create a context with configurable timeout
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, r.ReconcileTimeout)
 	defer cancel()
 
 	// Récupérer le CR
 	var cr agentsv0beta0.AzureDevOps
 	if err := r.Get(ctxWithTimeout, req.NamespacedName, &cr); err != nil {
 		if apierrors.IsNotFound(err) {
-			logger.Info("AzureDevOps resource not found. Ignoring since object must be deleted.")
+			logger.V(1).Info("Resource not found, ignoring")
 			return ctrl.Result{}, nil
 		}
-		logger.Error(err, "Failed to get AzureDevOps resource")
+		logger.Error(err, "Failed to get resource")
 		return ctrl.Result{}, err
 	}
 
@@ -102,13 +116,18 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	azureDevOpsClient := azuredevops.NewAzureDevOpsClient(patToken, cr.Spec.OrgURL, cr.Spec.Project)
 	r.Usecase.AzureDevOpsClient = azureDevOpsClient
 
-	// Get queue length before reconciliation
+	// Get queue length and calculate requeue interval based on queue state
 	queueLength, err := azureDevOpsClient.GetQueueLength(ctxWithTimeout, cr.Spec.PoolName)
 	if err != nil {
 		logger.Error(err, "Failed to get queue length")
-		r.Recorder.Event(&cr, corev1.EventTypeWarning, "AzureDevOpsError", fmt.Sprintf("Failed to get queue length: %v", err))
+		r.Recorder.Event(&cr, corev1.EventTypeWarning, "AzureDevOpsError",
+			fmt.Sprintf("Failed to get queue length: %v", err))
 		r.updateStatus(crCopy, "Failed", fmt.Sprintf("Failed to get queue length: %v", err))
-		return ctrl.Result{RequeueAfter: time.Minute}, err
+
+		// Use exponential backoff for queue errors
+		requeueAfter := calculateRequeueInterval(cr.Status.LastFailedCheck)
+		cr.Status.LastFailedCheck = &metav1.Time{Time: time.Now()}
+		return ctrl.Result{RequeueAfter: requeueAfter}, err
 	}
 
 	// Update status with queue information
@@ -117,31 +136,48 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Handle the reconciliation
 	result, err := r.Usecase.Handle(ctxWithTimeout, &cr)
 	if err != nil {
-		logger.Error(err, "Usecase Handle failed")
-		r.Recorder.Event(&cr, corev1.EventTypeWarning, "ReconcileError", fmt.Sprintf("Failed to reconcile: %v", err))
+		logger.Error(err, "Reconciliation failed")
+		r.Recorder.Event(&cr, corev1.EventTypeWarning, "ReconcileError",
+			fmt.Sprintf("Failed to reconcile: %v", err))
 		r.updateStatus(crCopy, "Failed", fmt.Sprintf("Reconciliation failed: %v", err))
 		return result, err
 	}
 
-	// Get current deployment to update status
+	// Get current deployment status
+	deploymentName := fmt.Sprintf("%s-agent", cr.Name) // Use consistent naming
 	deployment := &appsv1.Deployment{}
 	err = r.Get(ctxWithTimeout, types.NamespacedName{
-		Name:      cr.Name,
+		Name:      deploymentName,
 		Namespace: cr.Namespace,
 	}, deployment)
 
-	if err == nil {
-		// Update current and desired replicas in status
-		crCopy.Status.CurrentAgents = deployment.Status.ReadyReplicas
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			logger.Error(err, "Failed to get deployment")
+		}
+		// Don't return error for NotFound - deployment might not exist yet
+	} else {
+		// Only update LastScalingTime if replicas changed
+		currentReplicas := crCopy.Status.CurrentAgents
+		newReplicas := deployment.Status.ReadyReplicas
+
+		crCopy.Status.CurrentAgents = newReplicas
 		crCopy.Status.DesiredAgents = *deployment.Spec.Replicas
-		crCopy.Status.LastScalingTime = &metav1.Time{Time: time.Now()}
+
+		if currentReplicas != newReplicas {
+			crCopy.Status.LastScalingTime = &metav1.Time{Time: time.Now()}
+			logger.Info("Scaling event detected",
+				"from", currentReplicas,
+				"to", newReplicas)
+		}
 	}
 
 	// Update status to Ready
 	r.updateStatus(crCopy, "Ready", "Successfully reconciled Azure DevOps agent pool")
-	r.Recorder.Event(&cr, corev1.EventTypeNormal, "Reconciled", "Successfully reconciled Azure DevOps agent pool")
+	r.Recorder.Event(&cr, corev1.EventTypeNormal, "Reconciled",
+		"Successfully reconciled Azure DevOps agent pool")
 
-	logger.Info("Successfully reconciled AzureDevOps resource")
+	logger.V(1).Info("Completed reconciliation")
 	return result, nil
 }
 
@@ -214,4 +250,19 @@ func (r *AzureDevOpsReconciler) updateStatus(cr *agentsv0beta0.AzureDevOps, phas
 	if err := r.Status().Update(ctx, updatedCR); err != nil {
 		logger.V(1).Info("Failed to update AzureDevOps status", "error", err)
 	}
+}
+
+// calculateRequeueInterval implements exponential backoff
+func calculateRequeueInterval(lastFailure *metav1.Time) time.Duration {
+	if lastFailure == nil {
+		return defaultRequeueInterval
+	}
+
+	timeSinceFailure := time.Since(lastFailure.Time)
+	interval := defaultRequeueInterval * time.Duration(1<<uint(timeSinceFailure.Minutes()/5))
+
+	if interval > maxRequeueInterval {
+		return maxRequeueInterval
+	}
+	return interval
 }
