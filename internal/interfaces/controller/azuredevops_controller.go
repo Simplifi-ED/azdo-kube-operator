@@ -220,41 +220,50 @@ func (r *AzureDevOpsReconciler) getPATToken(ctx context.Context, req ctrl.Reques
 func (r *AzureDevOpsReconciler) updateStatus(ctx context.Context, cr *agentsv0beta0.AzureDevOps, phase string, message string) {
 	logger := log.FromContext(ctx)
 
-	// Get the latest version of the CR
-	updatedCR := &agentsv0beta0.AzureDevOps{}
-	if err := r.Get(ctx, types.NamespacedName{
-		Name:      cr.Name,
-		Namespace: cr.Namespace,
-	}, updatedCR); err != nil {
-		logger.Error(err, "Failed to get latest version of AzureDevOps resource")
-		return
-	}
+	// Try up to 3 times to update the status
+	for i := 0; i < 3; i++ {
+		// Get the latest version of the CR
+		updatedCR := &agentsv0beta0.AzureDevOps{}
+		if err := r.Get(ctx, types.NamespacedName{
+			Name:      cr.Name,
+			Namespace: cr.Namespace,
+		}, updatedCR); err != nil {
+			logger.Error(err, "Failed to get latest version of AzureDevOps resource")
+			return
+		}
 
-	// Update only the essential status fields
-	updatedCR.Status.CurrentAgents = cr.Status.CurrentAgents
-	updatedCR.Status.QueuedJobs = cr.Status.QueuedJobs
-	updatedCR.Status.DesiredAgents = cr.Status.DesiredAgents
-	// Remove LastScalingTime update as it's not recognized
+		// Update status fields
+		updatedCR.Status.CurrentAgents = cr.Status.CurrentAgents
+		updatedCR.Status.QueuedJobs = cr.Status.QueuedJobs
+		updatedCR.Status.DesiredAgents = cr.Status.DesiredAgents
 
-	// Update the condition
-	var status metav1.ConditionStatus
-	if phase == "Ready" {
-		status = metav1.ConditionTrue
-	} else {
-		status = metav1.ConditionFalse
-	}
+		// Update condition
+		var status metav1.ConditionStatus
+		if phase == "Ready" {
+			status = metav1.ConditionTrue
+		} else {
+			status = metav1.ConditionFalse
+		}
 
-	meta.SetStatusCondition(&updatedCR.Status.Conditions, metav1.Condition{
-		Type:               "Ready",
-		Status:             status,
-		Reason:             phase,
-		Message:            message,
-		LastTransitionTime: metav1.Now(),
-	})
+		meta.SetStatusCondition(&updatedCR.Status.Conditions, metav1.Condition{
+			Type:               "Ready",
+			Status:             status,
+			Reason:             phase,
+			Message:            message,
+			LastTransitionTime: metav1.Now(),
+		})
 
-	// Update the status
-	if err := r.Status().Update(ctx, updatedCR); err != nil {
-		logger.V(1).Info("Failed to update AzureDevOps status", "error", err)
+		// Try to update
+		if err := r.Status().Update(ctx, updatedCR); err != nil {
+			if apierrors.IsConflict(err) && i < 2 {
+				// If it's a conflict and we have retries left, wait and try again
+				time.Sleep(time.Duration(i+1) * 100 * time.Millisecond)
+				continue
+			}
+			logger.V(1).Info("Failed to update AzureDevOps status", "error", err)
+			return
+		}
+		return // Success
 	}
 }
 
