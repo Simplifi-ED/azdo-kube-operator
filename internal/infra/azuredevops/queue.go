@@ -143,6 +143,8 @@ func buildAuthHeader(patToken string) string {
 }
 
 func GetQueueIdFromName(ctx context.Context, orgURL, project, patToken, poolName string) (string, error) {
+	logger := log.FromContext(ctx)
+
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
@@ -163,7 +165,11 @@ func GetQueueIdFromName(ctx context.Context, orgURL, project, patToken, poolName
 		}
 		return "", fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			logger.Error(cerr, "Failed to close response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
