@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: simplifiedreg.azurecr.io/azdo-operator
-  newTag: 0.0.2
+  newTag: 0.0.3
