@@ -144,9 +144,8 @@ func buildAuthHeader(patToken string) string {
 
 func GetQueueIdFromName(ctx context.Context, orgURL, project, patToken, poolName string) (string, error) {
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 5 * time.Second,
 	}
-	logger := log.FromContext(ctx)
 	url := fmt.Sprintf("%s/_apis/distributedtask/pools?poolName=%s&api-version=7.1",
 		strings.TrimRight(orgURL, "/"), poolName)
 
@@ -159,13 +158,12 @@ func GetQueueIdFromName(ctx context.Context, orgURL, project, patToken, poolName
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if ctx.Err() == context.Canceled {
+			return "", fmt.Errorf("request canceled while getting pool ID")
+		}
 		return "", fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer func() {
-		if cerr := resp.Body.Close(); cerr != nil {
-			logger.Error(cerr, "Failed to close response body")
-		}
-	}()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -187,7 +185,10 @@ func GetQueueIdFromName(ctx context.Context, orgURL, project, patToken, poolName
 func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string) (int, error) {
 	logger := log.FromContext(ctx)
 
-	poolID, err := GetQueueIdFromName(ctx, a.OrgURL, a.Project, a.PATToken, poolName)
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	poolID, err := GetQueueIdFromName(ctxWithTimeout, a.OrgURL, a.Project, a.PATToken, poolName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get pool ID: %w", err)
 	}
@@ -196,7 +197,7 @@ func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string)
 	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%s/jobrequests?api-version=7.1",
 		a.OrgURL, poolID)
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctxWithTimeout, "GET", url, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
