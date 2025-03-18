@@ -210,7 +210,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 		crCopy.Status.CurrentAgents = newReplicas
 		crCopy.Status.DesiredAgents = *deployment.Spec.Replicas
-		crCopy.Status.ReadyAgents = *deployment.Spec.Replicas
+		crCopy.Status.ReadyAgents = newReplicas
 
 		if currentReplicas != newReplicas {
 			crCopy.Status.LastScalingTime = &metav1.Time{Time: time.Now()}

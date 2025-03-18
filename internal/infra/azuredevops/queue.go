@@ -20,9 +20,13 @@ const (
 
 type Client interface {
 	GetQueueLength(ctx context.Context, poolName string) (int, error)
+	// GetPoolIDByName retrieves the pool ID based on the provided pool name.
 	GetPoolIDByName(ctx context.Context, poolName string) (int, error)
+	// GetAgentsInPool fetches a list of agents associated with a specified pool ID.
 	GetAgentsInPool(ctx context.Context, poolID int) ([]Agent, error)
+	// DisableAgent disables an agent identified by the given pool ID and agent ID.
 	DisableAgent(ctx context.Context, poolID int, agentID int) error
+	// DeleteAgent deletes an agent specified by the pool ID and agent ID.
 	DeleteAgent(ctx context.Context, poolID int, agentID int) error
 }
 
@@ -272,10 +276,13 @@ func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string)
 func (a *AzureDevOpsClient) DeleteAgent(ctx context.Context, poolID int, agentID int) error {
 	logger := log.FromContext(ctx)
 
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents/%d?api-version=%s",
 		a.OrgURL, poolID, agentID, apiVersion)
 
-	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	req, err := http.NewRequestWithContext(ctxWithTimeout, "DELETE", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
