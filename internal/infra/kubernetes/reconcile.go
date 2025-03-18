@@ -131,6 +131,7 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 			podTemplateSpec.Spec.Containers[i].Command = []string{"/bin/sh", "-c"}
 			podTemplateSpec.Spec.Containers[i].Args = []string{
 				"trap 'touch /usr/share/pod/done' EXIT\n./start.sh",
+				"--once",
 			}
 			podTemplateSpec.Spec.Containers[i].VolumeMounts = append(
 				podTemplateSpec.Spec.Containers[i].VolumeMounts,

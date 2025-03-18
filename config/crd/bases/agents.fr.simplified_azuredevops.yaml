@@ -1204,6 +1204,11 @@ spec:
                   in the pool
                 format: int32
                 type: integer
+              readyAgents:
+                description: DesiredAgents represents the number of agents the controller
+                  wants to have
+                format: int32
+                type: integer
             type: object
         type: object
     served: true
