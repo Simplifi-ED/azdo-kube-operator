@@ -93,6 +93,10 @@ type AzureDevOpsStatus struct {
 	// +optional
 	DesiredAgents int32 `json:"desiredAgents,omitempty"`
 
+	// DesiredAgents represents the number of agents the controller wants to have
+	// +optional
+	ReadyAgents int32 `json:"readyAgents,omitempty"`
+
 	// LastScalingTime is the last time the number of agents was changed
 	// +optional
 	LastScalingTime *metav1.Time `json:"lastScalingTime,omitempty"`

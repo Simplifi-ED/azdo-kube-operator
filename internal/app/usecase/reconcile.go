@@ -56,6 +56,7 @@ func (r *Reconcile) Handle(ctx context.Context, azdo *v0beta0.AzureDevOps) (ctrl
 	// Update status
 	azdo.Status.QueuedJobs = int32(queueLength)
 	azdo.Status.DesiredAgents = desiredReplicas
+	azdo.Status.ReadyAgents = currentReplicas
 
 	// Only update LastScalingTime if replica count changes
 	if currentReplicas != desiredReplicas {
