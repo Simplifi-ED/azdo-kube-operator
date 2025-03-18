@@ -281,7 +281,9 @@ func (a *AzureDevOpsClient) DeleteAgent(ctx context.Context, poolID int, agentID
 	if err != nil {
 		return fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close()
+	if errClose := resp.Body.Close(); errClose != nil {
+		logger.Error(errClose, "Failed to close response body")
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -316,7 +318,9 @@ func (a *AzureDevOpsClient) DisableAgent(ctx context.Context, poolID int, agentI
 	if err != nil {
 		return fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close()
+	if errClose := resp.Body.Close(); errClose != nil {
+		logger.Error(errClose, "Failed to close response body")
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -344,7 +348,9 @@ func (a *AzureDevOpsClient) GetAgentsInPool(ctx context.Context, poolID int) ([]
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close()
+	if errClose := resp.Body.Close(); errClose != nil {
+		logger.Error(errClose, "Failed to close response body")
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -381,7 +387,9 @@ func (a *AzureDevOpsClient) GetPoolIDByName(ctx context.Context, poolName string
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close()
+	if errClose := resp.Body.Close(); errClose != nil {
+		logger.Error(errClose, "Failed to close response body")
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
