@@ -15,6 +15,10 @@ import (
 
 type Client interface {
 	GetQueueLength(ctx context.Context, poolName string) (int, error)
+	GetPoolIDByName(ctx context.Context, poolName string) (int, error)
+	GetAgentsInPool(ctx context.Context, poolID int) ([]Agent, error)
+	DisableAgent(ctx context.Context, poolID int, agentID int) error
+	DeleteAgent(ctx context.Context, poolID int, agentID int) error
 }
 
 type AzureDevOpsClient struct {
@@ -258,4 +262,141 @@ func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string)
 		"pendingJobs", pendingJobs)
 
 	return pendingJobs, nil
+}
+
+func (a *AzureDevOpsClient) DeleteAgent(ctx context.Context, poolID int, agentID int) error {
+	logger := log.FromContext(ctx)
+	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents/%d?api-version=%s",
+		a.OrgURL, poolID, agentID, ApiVersion)
+
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", buildAuthHeader(a.PATToken))
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status code: %d - %s", resp.StatusCode, string(body))
+	}
+
+	logger.Info("Successfully deleted agent", "poolID", poolID, "agentID", agentID)
+	return nil
+}
+
+func (a *AzureDevOpsClient) DisableAgent(ctx context.Context, poolID int, agentID int) error {
+	logger := log.FromContext(ctx)
+	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents/%d?api-version=%s",
+		a.OrgURL, poolID, agentID, ApiVersion)
+
+	payload := map[string]bool{"enabled": false}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "PATCH", url, strings.NewReader(string(jsonData)))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", buildAuthHeader(a.PATToken))
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status code: %d - %s", resp.StatusCode, string(body))
+	}
+
+	logger.Info("Successfully disabled agent", "poolID", poolID, "agentID", agentID)
+	return nil
+}
+
+func (a *AzureDevOpsClient) GetAgentsInPool(ctx context.Context, poolID int) ([]Agent, error) {
+	logger := log.FromContext(ctx)
+	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents?api-version=%s",
+		a.OrgURL, poolID, ApiVersion)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", buildAuthHeader(a.PATToken))
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var agentResp struct {
+		Count int     `json:"count"`
+		Value []Agent `json:"value"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&agentResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	logger.V(1).Info("Retrieved agents", "poolID", poolID, "count", agentResp.Count)
+	return agentResp.Value, nil
+}
+
+func (a *AzureDevOpsClient) GetPoolIDByName(ctx context.Context, poolName string) (int, error) {
+	logger := log.FromContext(ctx)
+	url := fmt.Sprintf("%s/_apis/distributedtask/pools?poolName=%s&api-version=%s",
+		a.OrgURL, poolName, ApiVersion)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", buildAuthHeader(a.PATToken))
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("unexpected status code: %d - %s", resp.StatusCode, string(body))
+	}
+
+	var queueResp QueueNameResponse
+	if err := json.NewDecoder(resp.Body).Decode(&queueResp); err != nil {
+		return 0, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if queueResp.Count == 0 || len(queueResp.Value) == 0 {
+		return 0, fmt.Errorf("no pool found with name: %s", poolName)
+	}
+
+	logger.V(1).Info("Retrieved pool ID", "poolName", poolName, "poolID", queueResp.Value[0].ID)
+	return queueResp.Value[0].ID, nil
 }

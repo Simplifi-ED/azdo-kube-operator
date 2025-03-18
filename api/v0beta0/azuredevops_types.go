@@ -60,11 +60,11 @@ type AzureDevOpsSpec struct {
 
 	// MinReplicas is the minimum number of replicas for the agent (default: 1)
 	// +kubebuilder:validation:Optional
-	MinReplicas string `json:"minReplicas,omitempty"`
+	MinReplicas int32 `json:"minReplicas,omitempty"`
 
 	// MaxReplicas is the maximum number of replicas for the agent (default: 10)
 	// +kubebuilder:validation:Optional
-	MaxReplicas string `json:"maxReplicas,omitempty"`
+	MaxReplicas int32 `json:"maxReplicas,omitempty"`
 
 	// Docker specifies Docker-related configuration (Possible values: dind, buildkit)
 	// +kubebuilder:validation:Optional
