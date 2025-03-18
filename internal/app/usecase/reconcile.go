@@ -3,6 +3,7 @@ package usecases
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"fr.simplified/azuredevops/api/v0beta0"
@@ -53,7 +54,7 @@ func (r *Reconcile) Handle(ctx context.Context, azdo *v0beta0.AzureDevOps) (ctrl
 
 	// Calculate desired replicas
 	currentReplicas := azdo.Status.DesiredAgents
-	desiredReplicas := determineDesiredReplicas(queueLength, logger)
+	desiredReplicas := determineDesiredReplicas(queueLength, logger, azdo)
 
 	// Update status
 	azdo.Status.QueuedJobs = int32(queueLength)
@@ -79,15 +80,43 @@ func (r *Reconcile) Handle(ctx context.Context, azdo *v0beta0.AzureDevOps) (ctrl
 }
 
 // determineDesiredReplicas calculates the number of replicas based on queue length
-func determineDesiredReplicas(queueLength int, logger logr.Logger) int32 {
-	// If there are no jobs in queue, consider scaling to minimum
+func determineDesiredReplicas(queueLength int, logger logr.Logger, azdo *v0beta0.AzureDevOps) int32 {
+	// Determine min and max replicas from spec or use defaults
+	minReplicas := int32(minReplicas) // default from const
+	maxReplicas := int32(maxReplicas) // default from const
+
+	// Parse spec values if defined
+	if azdo.Spec.MinReplicas != "" {
+		if val, err := strconv.ParseInt(azdo.Spec.MinReplicas, 10, 32); err == nil {
+			minReplicas = int32(val)
+			logger.V(1).Info("Using spec minReplicas", "value", minReplicas)
+		} else {
+			logger.Error(err, "Invalid minReplicas in spec, using default", "default", minReplicas)
+		}
+	}
+
+	if azdo.Spec.MaxReplicas != "" {
+		if val, err := strconv.ParseInt(azdo.Spec.MaxReplicas, 10, 32); err == nil {
+			maxReplicas = int32(val)
+			logger.V(1).Info("Using spec maxReplicas", "value", maxReplicas)
+		} else {
+			logger.Error(err, "Invalid maxReplicas in spec, using default", "default", maxReplicas)
+		}
+	}
+
+	// If there are no jobs in queue, scale to minimum
 	if queueLength == 0 {
-		logger.V(1).Info("No jobs in queue, scaling to minimum")
+		logger.V(1).Info("No jobs in queue, scaling to minimum", "min", minReplicas)
 		return minReplicas
 	}
 
 	// Calculate desired replicas with bounds
-	desired := (queueLength + jobsPerReplica - 1) / jobsPerReplica // Ceiling division
+	desired := int32((queueLength + jobsPerReplica - 1) / jobsPerReplica) // Ceiling division
+
+	// Ensure desired is within bounds
+	if desired < minReplicas {
+		desired = minReplicas
+	}
 	if desired > maxReplicas {
 		desired = maxReplicas
 		logger.Info("Queue length exceeds capacity",
@@ -95,7 +124,7 @@ func determineDesiredReplicas(queueLength int, logger logr.Logger) int32 {
 			"maxReplicas", maxReplicas)
 	}
 
-	return int32(desired)
+	return desired
 }
 
 // calculateRequeueInterval determines the next reconciliation interval
