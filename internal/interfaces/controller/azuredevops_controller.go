@@ -91,7 +91,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			logger.Error(err, "Failed to handle pod event")
 			return ctrl.Result{RequeueAfter: time.Minute}, err
 		}
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
 	} else if !apierrors.IsNotFound(err) {
 		// Unexpected error
 		logger.Error(err, "Failed to get resource")
@@ -103,7 +103,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err := r.Get(ctxWithTimeout, req.NamespacedName, &cr); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.V(1).Info("Resource not found, ignoring")
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
 		}
 		logger.Error(err, "Failed to get resource")
 		return ctrl.Result{}, err
@@ -146,10 +146,10 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 
 			logger.Info("Successfully cleaned up Azure DevOps resources")
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
 		}
 		// Finalizer already removed, nothing to do
-		return ctrl.Result{}, nil
+		return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
 	}
 	// Add finalizer if it doesn't exist
 	if !controllerutil.ContainsFinalizer(&cr, azuredevops.AzdoFinalizerName) {
@@ -366,7 +366,7 @@ func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context,
 
 	// Find and disable/delete agents with names that match our pattern
 	agentPrefix := fmt.Sprintf("%s-", cr.Name)
-
+	success, failed := 0, 0
 	for _, agent := range agents {
 		// Check if the agent belongs to this resource by checking name prefix
 		if strings.HasPrefix(agent.Name, agentPrefix) {
@@ -380,6 +380,7 @@ func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context,
 				if err := client.DisableAgent(ctx, poolID, agent.ID); err != nil {
 					logger.Error(err, "Failed to disable agent", "agentID", agent.ID)
 					// Continue with other agents even if this one fails
+					failed++
 					continue
 				}
 				logger.Info("Successfully disabled agent", "agentID", agent.ID)
@@ -389,14 +390,15 @@ func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context,
 			if err := client.DeleteAgent(ctx, poolID, agent.ID); err != nil {
 				logger.Error(err, "Failed to delete agent", "agentID", agent.ID)
 				// Continue with other agents even if this one fails
+				failed++
 				continue
 			}
 
 			logger.Info("Successfully deleted agent", "agentID", agent.ID)
+			success++
 		}
 	}
-
-	logger.Info("Azure DevOps resource cleanup completed")
+	logger.Info("Azure DevOps resource cleanup completed", "successfulCleanups", success, "failedCleanups", failed)
 	return nil
 }
 
@@ -455,7 +457,8 @@ func (r *AzureDevOpsReconciler) handlePodEvent(ctx context.Context, pod *corev1.
 
 				for _, agent := range agents {
 					// Match agent name with pod name (may need adjustment based on your naming pattern)
-					if strings.Contains(agent.Name, podNameWithoutPrefix) {
+					agentNamePattern := fmt.Sprintf("%s-", podNameWithoutPrefix)
+					if strings.HasPrefix(agent.Name, agentNamePattern) || agent.Name == podNameWithoutPrefix {
 						logger.Info("Found matching agent to clean up",
 							"agentID", agent.ID,
 							"agentName", agent.Name)

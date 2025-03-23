@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -274,7 +275,7 @@ func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string)
 }
 
 func (a *AzureDevOpsClient) DeleteAgent(ctx context.Context, poolID int, agentID int) error {
-
+	logger := log.FromContext(ctx)
 	for attempt := 0; attempt < 3; attempt++ {
 		url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents/%d?api-version=%s",
 			a.OrgURL, poolID, agentID, apiVersion)
@@ -293,7 +294,9 @@ func (a *AzureDevOpsClient) DeleteAgent(ctx context.Context, poolID int, agentID
 		}
 
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			logger.Error(err, "Failed to close response body")
+		}
 
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
 			return nil
@@ -301,7 +304,8 @@ func (a *AzureDevOpsClient) DeleteAgent(ctx context.Context, poolID int, agentID
 
 		if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "TaskAgentJobStillRunningException") {
 			if attempt < 2 {
-				time.Sleep(time.Duration(attempt+1) * 5 * time.Second)
+				jitter := time.Duration(rand.Int63n(1000)) * time.Millisecond
+				time.Sleep(time.Duration(attempt+1)*5*time.Second + jitter)
 				continue
 			}
 		}
@@ -320,9 +324,8 @@ func (a *AzureDevOpsClient) DisableAgent(ctx context.Context, poolID int, agentI
 		return fmt.Errorf("invalid pool ID: %d", poolID)
 	}
 
-	orgName := strings.TrimPrefix(strings.TrimPrefix(a.OrgURL, "https://"), "dev.azure.com/")
-	url := fmt.Sprintf("https://dev.azure.com/%s/_apis/distributedtask/pools/%d/agents/%d?api-version=%s",
-		orgName, poolID, agentID, apiVersion)
+	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents/%d?api-version=%s",
+		a.OrgURL, poolID, agentID, apiVersion)
 
 	payload := struct {
 		ID      int  `json:"id"`
@@ -412,9 +415,13 @@ func (a *AzureDevOpsClient) GetPoolIDByName(ctx context.Context, poolName string
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute request: %w", err)
 	}
-	// Important: read the body before closing
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Error(err, "Failed to close response body")
+		}
+	}()
+
 	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close() // Always close the body
 
 	if err != nil {
 		return 0, fmt.Errorf("failed to read response body: %w", err)
