@@ -274,46 +274,45 @@ func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string)
 }
 
 func (a *AzureDevOpsClient) DeleteAgent(ctx context.Context, poolID int, agentID int) error {
-	logger := log.FromContext(ctx)
 
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	for attempt := 0; attempt < 3; attempt++ {
+		url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents/%d?api-version=%s",
+			a.OrgURL, poolID, agentID, apiVersion)
 
-	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents/%d?api-version=%s",
-		a.OrgURL, poolID, agentID, apiVersion)
-
-	req, err := http.NewRequestWithContext(ctxWithTimeout, "DELETE", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", buildAuthHeader(a.PATToken))
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer func() {
-		if cerr := resp.Body.Close(); cerr != nil {
-			logger.Error(cerr, "Failed to close response body")
+		req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
 		}
-	}()
 
-	// Accept both 200 OK and 204 No Content as success
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		req.Header.Set("Authorization", buildAuthHeader(a.PATToken))
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return fmt.Errorf("failed to execute request: %w", err)
+		}
+
 		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
+			return nil
+		}
+
+		if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "TaskAgentJobStillRunningException") {
+			if attempt < 2 {
+				time.Sleep(time.Duration(attempt+1) * 5 * time.Second)
+				continue
+			}
+		}
+
 		return fmt.Errorf("unexpected status code: %d - %s", resp.StatusCode, string(body))
 	}
 
-	logger.Info("Successfully deleted agent", "poolID", poolID, "agentID", agentID)
-	return nil
+	return fmt.Errorf("failed to delete agent after retries")
 }
 
 func (a *AzureDevOpsClient) DisableAgent(ctx context.Context, poolID int, agentID int) error {
-	logger := log.FromContext(ctx)
-
-	// Add validation
 	if agentID <= 0 {
 		return fmt.Errorf("invalid agent ID: %d", agentID)
 	}
@@ -321,28 +320,15 @@ func (a *AzureDevOpsClient) DisableAgent(ctx context.Context, poolID int, agentI
 		return fmt.Errorf("invalid pool ID: %d", poolID)
 	}
 
-	// Log input parameters
-	logger.V(1).Info("DisableAgent called with",
-		"poolID", poolID,
-		"agentID", agentID,
-		"orgURL", a.OrgURL)
-
-	// Extract organization name from URL
 	orgName := strings.TrimPrefix(strings.TrimPrefix(a.OrgURL, "https://"), "dev.azure.com/")
-
-	// Construct URL ensuring no double slashes
 	url := fmt.Sprintf("https://dev.azure.com/%s/_apis/distributedtask/pools/%d/agents/%d?api-version=%s",
 		orgName, poolID, agentID, apiVersion)
 
-	// Log the constructed URL
-	logger.V(1).Info("Making request to", "url", url)
-
-	// Create the request body
 	payload := struct {
 		ID      int  `json:"id"`
 		Enabled bool `json:"enabled"`
 	}{
-		ID:      agentID, // Include the agent ID in the payload
+		ID:      agentID,
 		Enabled: false,
 	}
 
@@ -350,9 +336,6 @@ func (a *AzureDevOpsClient) DisableAgent(ctx context.Context, poolID int, agentI
 	if err != nil {
 		return fmt.Errorf("failed to marshal request body: %w", err)
 	}
-
-	// Log the request payload
-	logger.V(1).Info("Request payload", "body", string(jsonData))
 
 	req, err := http.NewRequestWithContext(ctx, "PATCH", url, strings.NewReader(string(jsonData)))
 	if err != nil {
@@ -367,31 +350,17 @@ func (a *AzureDevOpsClient) DisableAgent(ctx context.Context, poolID int, agentI
 	if err != nil {
 		return fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer func() {
-		if cerr := resp.Body.Close(); cerr != nil {
-			logger.Error(cerr, "Failed to close response body")
-		}
-	}()
-
-	// Read the response body
-	body, _ := io.ReadAll(resp.Body)
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		logger.Error(fmt.Errorf("request failed"), "Request details",
-			"statusCode", resp.StatusCode,
-			"body", string(body),
-			"url", url,
-			"poolID", poolID,
-			"agentID", agentID)
+		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("unexpected status code: %d - %s", resp.StatusCode, string(body))
 	}
 
-	logger.Info("Successfully disabled agent", "poolID", poolID, "agentID", agentID)
 	return nil
 }
 
 func (a *AzureDevOpsClient) GetAgentsInPool(ctx context.Context, poolID int) ([]Agent, error) {
-	logger := log.FromContext(ctx)
 	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents?api-version=%s",
 		a.OrgURL, poolID, apiVersion)
 
@@ -407,12 +376,7 @@ func (a *AzureDevOpsClient) GetAgentsInPool(ctx context.Context, poolID int) ([]
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
-	// Defer closing the response body
-	defer func() {
-		if cerr := resp.Body.Close(); cerr != nil {
-			logger.Error(cerr, "Failed to close response body")
-		}
-	}()
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -428,7 +392,6 @@ func (a *AzureDevOpsClient) GetAgentsInPool(ctx context.Context, poolID int) ([]
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	logger.V(1).Info("Retrieved agents", "poolID", poolID, "count", agentResp.Count)
 	return agentResp.Value, nil
 }
 

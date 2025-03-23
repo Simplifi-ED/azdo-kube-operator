@@ -80,22 +80,15 @@ func (r *Reconcile) Handle(ctx context.Context, azdo *v0beta0.AzureDevOps) (ctrl
 // determineDesiredReplicas calculates the number of replicas based on queue length
 func determineDesiredReplicas(queueLength int, logger logr.Logger, azdo *v0beta0.AzureDevOps) int32 {
 	// Determine min and max replicas from spec or use defaults
-	minReplicas := int32(1)  // default value in API type
-	maxReplicas := int32(10) // default value in API type
+	minReplicas := int32(1)
+	maxReplicas := int32(10)
 
 	// Parse spec values if defined
 	if azdo.Spec.MinReplicas > 0 {
 		minReplicas = azdo.Spec.MinReplicas
-		logger.V(1).Info("Using spec minReplicas", "value", minReplicas)
-	} else {
-		logger.V(1).Info("Using default minReplicas", "default", minReplicas)
 	}
-
 	if azdo.Spec.MaxReplicas > 0 {
 		maxReplicas = azdo.Spec.MaxReplicas
-		logger.V(1).Info("Using spec maxReplicas", "value", maxReplicas)
-	} else {
-		logger.V(1).Info("Using default maxReplicas", "default", maxReplicas)
 	}
 
 	if minReplicas > maxReplicas {
@@ -103,22 +96,19 @@ func determineDesiredReplicas(queueLength int, logger logr.Logger, azdo *v0beta0
 			"minReplicas", minReplicas, "maxReplicas", maxReplicas)
 		minReplicas, maxReplicas = maxReplicas, minReplicas
 	}
-	// If there are no jobs in queue, scale to minimum
+
 	if queueLength == 0 {
-		logger.V(1).Info("No jobs in queue, scaling to minimum", "min", minReplicas)
 		return minReplicas
 	}
 
-	// Calculate desired replicas with bounds
-	desired := int32((queueLength + jobsPerReplica - 1) / jobsPerReplica) // Ceiling division
+	desired := int32((queueLength + jobsPerReplica - 1) / jobsPerReplica)
 
-	// Ensure desired is within bounds
 	if desired < minReplicas {
 		desired = minReplicas
 	}
 	if desired > maxReplicas {
 		desired = maxReplicas
-		logger.Info("Queue length exceeds capacity",
+		logger.V(1).Info("Queue length exceeds capacity",
 			"queueLength", queueLength,
 			"maxReplicas", maxReplicas)
 	}

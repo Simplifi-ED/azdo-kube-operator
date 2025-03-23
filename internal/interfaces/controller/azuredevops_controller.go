@@ -63,6 +63,7 @@ func (r *AzureDevOpsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&agentsv0beta0.AzureDevOps{}).
 		Owns(&appsv1.Deployment{}).
+		Owns(&corev1.Pod{}).
 		Complete(r)
 }
 
@@ -82,6 +83,20 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Create a context with configurable timeout
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, r.ReconcileTimeout)
 	defer cancel()
+
+	var pod corev1.Pod
+	if err := r.Get(ctxWithTimeout, req.NamespacedName, &pod); err == nil {
+		// If we found a pod, handle it
+		if err := r.handlePodEvent(ctxWithTimeout, &pod); err != nil {
+			logger.Error(err, "Failed to handle pod event")
+			return ctrl.Result{RequeueAfter: time.Minute}, err
+		}
+		return ctrl.Result{}, nil
+	} else if !apierrors.IsNotFound(err) {
+		// Unexpected error
+		logger.Error(err, "Failed to get resource")
+		return ctrl.Result{}, err
+	}
 
 	// Récupérer le CR
 	var cr agentsv0beta0.AzureDevOps
@@ -382,5 +397,91 @@ func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context,
 	}
 
 	logger.Info("Azure DevOps resource cleanup completed")
+	return nil
+}
+
+// handlePodEvent processes pod deletions and removes the corresponding Azure DevOps agents
+func (r *AzureDevOpsReconciler) handlePodEvent(ctx context.Context, pod *corev1.Pod) error {
+	logger := log.FromContext(ctx).WithValues(
+		"pod", pod.Name,
+		"namespace", pod.Namespace,
+	)
+
+	// Check if pod is being deleted or has failed/succeeded
+	if pod.DeletionTimestamp != nil || pod.Status.Phase == corev1.PodFailed || pod.Status.Phase == corev1.PodSucceeded {
+		// Find the owning AzureDevOps CR
+		for _, ownerRef := range pod.OwnerReferences {
+			if ownerRef.Kind == "AzureDevOps" {
+				logger.Info("Pod is being deleted/completed, cleaning up Azure DevOps agent",
+					"agentName", pod.Name,
+					"ownerCR", ownerRef.Name)
+
+				// Get the CR
+				cr := agentsv0beta0.AzureDevOps{}
+				if err := r.Get(ctx, types.NamespacedName{Name: ownerRef.Name, Namespace: pod.Namespace}, &cr); err != nil {
+					logger.Error(err, "Failed to get AzureDevOps CR")
+					return err
+				}
+
+				// Get PAT token
+				patToken, err := r.getPATToken(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}}, cr.Spec.PatSecretRef)
+				if err != nil {
+					logger.Error(err, "Failed to get PAT token")
+					return err
+				}
+
+				// Create Azure DevOps client
+				azureDevOpsClient := azuredevops.NewAzureDevOpsClient(patToken, cr.Spec.OrgURL, cr.Spec.Project)
+
+				// Get pool ID
+				poolID, err := azureDevOpsClient.GetPoolIDByName(ctx, cr.Spec.PoolName)
+				if err != nil {
+					logger.Error(err, "Failed to get pool ID")
+					return err
+				}
+
+				// Get all agents
+				agents, err := azureDevOpsClient.GetAgentsInPool(ctx, poolID)
+				if err != nil {
+					logger.Error(err, "Failed to get agents in pool")
+					return err
+				}
+
+				// Find agent by name pattern
+				podNameWithoutPrefix := pod.Name
+				if idx := strings.LastIndex(pod.Name, "-"); idx > 0 {
+					podNameWithoutPrefix = pod.Name[:idx]
+				}
+
+				for _, agent := range agents {
+					// Match agent name with pod name (may need adjustment based on your naming pattern)
+					if strings.Contains(agent.Name, podNameWithoutPrefix) {
+						logger.Info("Found matching agent to clean up",
+							"agentID", agent.ID,
+							"agentName", agent.Name)
+
+						// Disable agent first
+						if agent.Enabled {
+							if err := azureDevOpsClient.DisableAgent(ctx, poolID, agent.ID); err != nil {
+								logger.Error(err, "Failed to disable agent", "agentID", agent.ID)
+								continue
+							}
+							logger.Info("Successfully disabled agent", "agentID", agent.ID)
+						}
+
+						// Delete agent
+						if err := azureDevOpsClient.DeleteAgent(ctx, poolID, agent.ID); err != nil {
+							logger.Error(err, "Failed to delete agent", "agentID", agent.ID)
+							continue
+						}
+						logger.Info("Successfully deleted agent", "agentID", agent.ID)
+					}
+				}
+
+				return nil
+			}
+		}
+	}
+
 	return nil
 }

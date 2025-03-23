@@ -92,6 +92,15 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 	podTemplateSpec := corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{"app": "azdo-agent"},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: cr.APIVersion,
+					Kind:       cr.Kind,
+					Name:       cr.Name,
+					UID:        cr.UID,
+					Controller: ptr.To(true),
+				},
+			},
 		},
 		Spec: corev1.PodSpec{
 			ImagePullSecrets: imagePullSecrets,
