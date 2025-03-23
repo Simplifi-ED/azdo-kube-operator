@@ -317,6 +317,7 @@ func (a *AzureDevOpsClient) DeleteAgent(ctx context.Context, poolID int, agentID
 }
 
 func (a *AzureDevOpsClient) DisableAgent(ctx context.Context, poolID int, agentID int) error {
+	logger := log.FromContext(ctx)
 	if agentID <= 0 {
 		return fmt.Errorf("invalid agent ID: %d", agentID)
 	}
@@ -353,7 +354,11 @@ func (a *AzureDevOpsClient) DisableAgent(ctx context.Context, poolID int, agentI
 	if err != nil {
 		return fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Error(err, "Failed to close response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -364,6 +369,7 @@ func (a *AzureDevOpsClient) DisableAgent(ctx context.Context, poolID int, agentI
 }
 
 func (a *AzureDevOpsClient) GetAgentsInPool(ctx context.Context, poolID int) ([]Agent, error) {
+	logger := log.FromContext(ctx)
 	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents?api-version=%s",
 		a.OrgURL, poolID, apiVersion)
 
@@ -379,7 +385,11 @@ func (a *AzureDevOpsClient) GetAgentsInPool(ctx context.Context, poolID int) ([]
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Error(err, "Failed to close response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
