@@ -78,7 +78,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		"name", req.Name,
 		"namespace", req.Namespace,
 	)
-	logger.V(1).Info("Starting reconciliation")
+	logger.V(2).Info("Starting reconciliation")
 
 	// Create a context with configurable timeout
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, r.ReconcileTimeout)
@@ -320,11 +320,10 @@ func (r *AzureDevOpsReconciler) updateStatus(ctx context.Context, cr *agentsv0be
 		// Try to update
 		if err := r.Status().Update(ctx, updatedCR); err != nil {
 			if apierrors.IsConflict(err) && i < 2 {
-				// If it's a conflict and we have retries left, wait and try again
 				time.Sleep(time.Duration(i+1) * 100 * time.Millisecond)
 				continue
 			}
-			logger.V(1).Info("Failed to update AzureDevOps status", "error", err)
+			logger.V(2).Info("Failed to update AzureDevOps status", "error", err) // Change from V(1) to V(2)
 			return
 		}
 		return // Success
@@ -345,7 +344,6 @@ func calculateRequeueInterval(lastFailure *metav1.Time) time.Duration {
 	}
 	return interval
 }
-
 func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context, cr *agentsv0beta0.AzureDevOps, client azuredevops.Client) error {
 	logger := log.FromContext(ctx).WithValues(
 		"name", cr.Name,
@@ -370,35 +368,26 @@ func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context,
 	for _, agent := range agents {
 		// Check if the agent belongs to this resource by checking name prefix
 		if strings.HasPrefix(agent.Name, agentPrefix) {
-			logger.Info("Found agent to cleanup",
-				"agentID", agent.ID,
-				"agentName", agent.Name,
-				"agentStatus", agent.Status)
-
 			// Disable agent first
 			if agent.Enabled {
 				if err := client.DisableAgent(ctx, poolID, agent.ID); err != nil {
 					logger.Error(err, "Failed to disable agent", "agentID", agent.ID)
-					// Continue with other agents even if this one fails
 					failed++
 					continue
 				}
-				logger.Info("Successfully disabled agent", "agentID", agent.ID)
 			}
 
 			// Delete agent
 			if err := client.DeleteAgent(ctx, poolID, agent.ID); err != nil {
 				logger.Error(err, "Failed to delete agent", "agentID", agent.ID)
-				// Continue with other agents even if this one fails
 				failed++
 				continue
 			}
 
-			logger.Info("Successfully deleted agent", "agentID", agent.ID)
 			success++
 		}
 	}
-	logger.Info("Azure DevOps resource cleanup completed", "successfulCleanups", success, "failedCleanups", failed)
+	logger.V(1).Info("Azure DevOps resource cleanup completed", "successfulCleanups", success, "failedCleanups", failed)
 	return nil
 }
 
@@ -414,9 +403,7 @@ func (r *AzureDevOpsReconciler) handlePodEvent(ctx context.Context, pod *corev1.
 		// Find the owning AzureDevOps CR
 		for _, ownerRef := range pod.OwnerReferences {
 			if ownerRef.Kind == "AzureDevOps" {
-				logger.Info("Pod is being deleted/completed, cleaning up Azure DevOps agent",
-					"agentName", pod.Name,
-					"ownerCR", ownerRef.Name)
+				logger.V(2).Info("Processing deleted/completed pod")
 
 				// Get the CR
 				cr := agentsv0beta0.AzureDevOps{}
@@ -455,31 +442,32 @@ func (r *AzureDevOpsReconciler) handlePodEvent(ctx context.Context, pod *corev1.
 					podNameWithoutPrefix = pod.Name[:idx]
 				}
 
+				success, failed := 0, 0
 				for _, agent := range agents {
 					// Match agent name with pod name (may need adjustment based on your naming pattern)
 					agentNamePattern := fmt.Sprintf("%s-", podNameWithoutPrefix)
 					if strings.HasPrefix(agent.Name, agentNamePattern) || agent.Name == podNameWithoutPrefix {
-						logger.Info("Found matching agent to clean up",
-							"agentID", agent.ID,
-							"agentName", agent.Name)
-
 						// Disable agent first
 						if agent.Enabled {
 							if err := azureDevOpsClient.DisableAgent(ctx, poolID, agent.ID); err != nil {
 								logger.Error(err, "Failed to disable agent", "agentID", agent.ID)
+								failed++
 								continue
 							}
-							logger.Info("Successfully disabled agent", "agentID", agent.ID)
 						}
 
 						// Delete agent
 						if err := azureDevOpsClient.DeleteAgent(ctx, poolID, agent.ID); err != nil {
 							logger.Error(err, "Failed to delete agent", "agentID", agent.ID)
+							failed++
 							continue
 						}
-						logger.Info("Successfully deleted agent", "agentID", agent.ID)
+
+						success++
 					}
 				}
+
+				logger.V(2).Info("Cleanup completed", "successfulCleanups", success, "failedCleanups", failed)
 
 				return nil
 			}
