@@ -122,11 +122,9 @@ func (a *AzureDevOpsClient) doRequestWithBackoff(ctx context.Context, req *http.
 
 			// Close the response before waiting
 			if resp.Body != nil {
-				defer func() {
-					if err := resp.Body.Close(); err != nil {
-						logger.Error(err, "Failed to close response body")
-					}
-				}()
+				if err := resp.Body.Close(); err != nil {
+					logger.Error(err, "Failed to close response body")
+				}
 			}
 
 			select {
@@ -322,11 +320,9 @@ func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.Error(err, "Failed to close response body")
-		}
-	}()
+	if errClose := resp.Body.Close(); errClose != nil {
+		logger.Error(errClose, "Failed to close response body")
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -444,11 +440,9 @@ func (a *AzureDevOpsClient) DisableAgent(ctx context.Context, poolID int, agentI
 	if err != nil {
 		return fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.Error(err, "Failed to close response body")
-		}
-	}()
+	if errClose := resp.Body.Close(); errClose != nil {
+		logger.Error(errClose, "Failed to close response body")
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -475,11 +469,9 @@ func (a *AzureDevOpsClient) GetAgentsInPool(ctx context.Context, poolID int) ([]
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.Error(err, "Failed to close response body")
-		}
-	}()
+	if errClose := resp.Body.Close(); errClose != nil {
+		logger.Error(errClose, "Failed to close response body")
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -523,11 +515,9 @@ func (a *AzureDevOpsClient) GetPoolIDByName(ctx context.Context, poolName string
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute request: %w", err)
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.Error(err, "Failed to close response body")
-		}
-	}()
+	if errClose := resp.Body.Close(); errClose != nil {
+		logger.Error(errClose, "Failed to close response body")
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
