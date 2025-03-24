@@ -58,6 +58,14 @@ type AzureDevOpsSpec struct {
 	// +kubebuilder:validation:Optional
 	Mode string `json:"mode,omitempty"`
 
+	// MinReplicas is the minimum number of replicas for the agent (default: 1)
+	// +kubebuilder:validation:Optional
+	MinReplicas int32 `json:"minReplicas,omitempty"`
+
+	// MaxReplicas is the maximum number of replicas for the agent (default: 10)
+	// +kubebuilder:validation:Optional
+	MaxReplicas int32 `json:"maxReplicas,omitempty"`
+
 	// Docker specifies Docker-related configuration (Possible values: dind, buildkit)
 	// +kubebuilder:validation:Optional
 	Docker string `json:"docker,omitempty"`
@@ -84,6 +92,10 @@ type AzureDevOpsStatus struct {
 	// DesiredAgents represents the number of agents the controller wants to have
 	// +optional
 	DesiredAgents int32 `json:"desiredAgents,omitempty"`
+
+	// DesiredAgents represents the number of agents the controller wants to have
+	// +optional
+	ReadyAgents int32 `json:"readyAgents,omitempty"`
 
 	// LastScalingTime is the last time the number of agents was changed
 	// +optional

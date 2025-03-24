@@ -92,6 +92,15 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 	podTemplateSpec := corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: map[string]string{"app": "azdo-agent"},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: cr.APIVersion,
+					Kind:       cr.Kind,
+					Name:       cr.Name,
+					UID:        cr.UID,
+					Controller: ptr.To(true),
+				},
+			},
 		},
 		Spec: corev1.PodSpec{
 			ImagePullSecrets: imagePullSecrets,
@@ -131,6 +140,7 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 			podTemplateSpec.Spec.Containers[i].Command = []string{"/bin/sh", "-c"}
 			podTemplateSpec.Spec.Containers[i].Args = []string{
 				"trap 'touch /usr/share/pod/done' EXIT\n./start.sh",
+				"--once",
 			}
 			podTemplateSpec.Spec.Containers[i].VolumeMounts = append(
 				podTemplateSpec.Spec.Containers[i].VolumeMounts,

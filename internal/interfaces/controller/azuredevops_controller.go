@@ -3,11 +3,13 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	usecases "fr.simplified/azuredevops/internal/app/usecase"
 	"fr.simplified/azuredevops/internal/infra/azuredevops"
 	"fr.simplified/azuredevops/internal/infra/kubernetes"
+	"go.uber.org/multierr"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -17,6 +19,7 @@ import (
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	agentsv0beta0 "fr.simplified/azuredevops/api/v0beta0"
@@ -61,6 +64,7 @@ func (r *AzureDevOpsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&agentsv0beta0.AzureDevOps{}).
 		Owns(&appsv1.Deployment{}).
+		Owns(&corev1.Pod{}).
 		Complete(r)
 }
 
@@ -75,18 +79,32 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		"name", req.Name,
 		"namespace", req.Namespace,
 	)
-	logger.V(1).Info("Starting reconciliation")
+	logger.V(2).Info("Starting reconciliation")
 
 	// Create a context with configurable timeout
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, r.ReconcileTimeout)
 	defer cancel()
+
+	var pod corev1.Pod
+	if err := r.Get(ctxWithTimeout, req.NamespacedName, &pod); err == nil {
+		// If we found a pod, handle it
+		if err := r.handlePodEvent(ctxWithTimeout, &pod); err != nil {
+			logger.Error(err, "Failed to handle pod event")
+			return ctrl.Result{RequeueAfter: time.Minute}, err
+		}
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	} else if !apierrors.IsNotFound(err) {
+		// Unexpected error
+		logger.Error(err, "Failed to get resource")
+		return ctrl.Result{}, err
+	}
 
 	// Récupérer le CR
 	var cr agentsv0beta0.AzureDevOps
 	if err := r.Get(ctxWithTimeout, req.NamespacedName, &cr); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.V(1).Info("Resource not found, ignoring")
-			return ctrl.Result{}, nil
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 		logger.Error(err, "Failed to get resource")
 		return ctrl.Result{}, err
@@ -98,6 +116,51 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Initialize status if it's nil
 	if crCopy.Status.Conditions == nil {
 		crCopy.Status.Conditions = []metav1.Condition{}
+	}
+	// examine DeletionTimestamp to determine if object is under deletion
+	if !cr.ObjectMeta.DeletionTimestamp.IsZero() {
+		// Resource is being deleted
+		if controllerutil.ContainsFinalizer(&cr, azuredevops.AzdoFinalizerName) {
+			logger.Info("Resource is being deleted, cleaning up Azure DevOps resources")
+
+			// Get PAT token for Azure DevOps API access
+			patToken, err := r.getPATToken(ctxWithTimeout, req, cr.Spec.PatSecretRef)
+			if err != nil {
+				logger.Error(err, "Failed to get PAT token during cleanup")
+				return ctrl.Result{RequeueAfter: time.Minute}, err
+			}
+
+			// Create Azure DevOps client
+			azureDevOpsClient := azuredevops.NewAzureDevOpsClient(patToken, cr.Spec.OrgURL, cr.Spec.Project)
+
+			// Execute cleanup of Azure DevOps resources
+			if err := r.deleteExternalAzDOResources(ctxWithTimeout, &cr, azureDevOpsClient); err != nil {
+				logger.Error(err, "Failed to clean up Azure DevOps resources")
+				return ctrl.Result{RequeueAfter: time.Minute}, err
+			}
+
+			// Remove finalizer after successful cleanup
+			controllerutil.RemoveFinalizer(&cr, azuredevops.AzdoFinalizerName)
+			if err := r.Update(ctxWithTimeout, &cr); err != nil {
+				logger.Error(err, "Failed to remove finalizer")
+				return ctrl.Result{}, err
+			}
+
+			logger.Info("Successfully cleaned up Azure DevOps resources")
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+		// Finalizer already removed, nothing to do
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	}
+	// Add finalizer if it doesn't exist
+	if !controllerutil.ContainsFinalizer(&cr, azuredevops.AzdoFinalizerName) {
+		controllerutil.AddFinalizer(&cr, azuredevops.AzdoFinalizerName)
+		if err := r.Update(ctxWithTimeout, &cr); err != nil {
+			logger.Error(err, "Failed to add finalizer")
+			return ctrl.Result{}, err
+		}
+		// Return early after adding finalizer to avoid race conditions
+		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// First update status to Processing
@@ -163,6 +226,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 		crCopy.Status.CurrentAgents = newReplicas
 		crCopy.Status.DesiredAgents = *deployment.Spec.Replicas
+		crCopy.Status.ReadyAgents = newReplicas
 
 		if currentReplicas != newReplicas {
 			crCopy.Status.LastScalingTime = &metav1.Time{Time: time.Now()}
@@ -236,6 +300,7 @@ func (r *AzureDevOpsReconciler) updateStatus(ctx context.Context, cr *agentsv0be
 		updatedCR.Status.CurrentAgents = cr.Status.CurrentAgents
 		updatedCR.Status.QueuedJobs = cr.Status.QueuedJobs
 		updatedCR.Status.DesiredAgents = cr.Status.DesiredAgents
+		updatedCR.Status.ReadyAgents = cr.Status.ReadyAgents
 
 		// Update condition
 		var status metav1.ConditionStatus
@@ -256,11 +321,10 @@ func (r *AzureDevOpsReconciler) updateStatus(ctx context.Context, cr *agentsv0be
 		// Try to update
 		if err := r.Status().Update(ctx, updatedCR); err != nil {
 			if apierrors.IsConflict(err) && i < 2 {
-				// If it's a conflict and we have retries left, wait and try again
 				time.Sleep(time.Duration(i+1) * 100 * time.Millisecond)
 				continue
 			}
-			logger.V(1).Info("Failed to update AzureDevOps status", "error", err)
+			logger.V(2).Info("Failed to update AzureDevOps status", "error", err) // Change from V(1) to V(2)
 			return
 		}
 		return // Success
@@ -280,4 +344,150 @@ func calculateRequeueInterval(lastFailure *metav1.Time) time.Duration {
 		return maxRequeueInterval
 	}
 	return interval
+}
+func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context, cr *agentsv0beta0.AzureDevOps, client azuredevops.Client) error {
+	logger := log.FromContext(ctx).WithValues(
+		"name", cr.Name,
+		"namespace", cr.Namespace,
+	)
+
+	// Get pool ID from pool name
+	poolID, err := client.GetPoolIDByName(ctx, cr.Spec.PoolName)
+	if err != nil {
+		return fmt.Errorf("failed to get pool ID: %w", err)
+	}
+
+	// Get all agents in the pool
+	agents, err := client.GetAgentsInPool(ctx, poolID)
+	if err != nil {
+		return fmt.Errorf("failed to get agents in pool: %w", err)
+	}
+
+	// Find and disable/delete agents with names that match our pattern
+	agentPrefix := fmt.Sprintf("%s-", cr.Name)
+	success, failed := 0, 0
+	var failureError error
+	for _, agent := range agents {
+		// Check if the agent belongs to this resource by checking name prefix
+		if strings.HasPrefix(agent.Name, agentPrefix) {
+			// Disable agent first
+			if agent.Enabled {
+				if err := client.DisableAgent(ctx, poolID, agent.ID); err != nil {
+					logger.Error(err, "Failed to disable agent", "agentID", agent.ID)
+					failureError = multierr.Append(failureError, err)
+					failed++
+					continue
+				}
+			}
+
+			// Delete agent
+			if err := client.DeleteAgent(ctx, poolID, agent.ID); err != nil {
+				logger.Error(err, "Failed to delete agent", "agentID", agent.ID)
+				failed++
+				failureError = multierr.Append(failureError, err)
+				continue
+			}
+
+			success++
+		}
+	}
+
+	if failed > 0 {
+		return fmt.Errorf("failed to clean up %d Azure DevOps agents: %w", failed, failureError)
+	}
+
+	logger.V(1).Info("Azure DevOps resource cleanup completed", "successfulCleanups", success, "failedCleanups", failed)
+	return nil
+}
+
+// handlePodEvent processes pod deletions and removes the corresponding Azure DevOps agents
+func (r *AzureDevOpsReconciler) handlePodEvent(ctx context.Context, pod *corev1.Pod) error {
+	logger := log.FromContext(ctx).WithValues(
+		"pod", pod.Name,
+		"namespace", pod.Namespace,
+	)
+
+	// Check if pod is being deleted or has failed/succeeded
+	if pod.DeletionTimestamp != nil || pod.Status.Phase == corev1.PodFailed || pod.Status.Phase == corev1.PodSucceeded {
+		// Find the owning AzureDevOps CR
+		for _, ownerRef := range pod.OwnerReferences {
+			if ownerRef.Kind == "AzureDevOps" {
+				logger.V(2).Info("Processing deleted/completed pod")
+
+				// Get the CR
+				cr := agentsv0beta0.AzureDevOps{}
+				if err := r.Get(ctx, types.NamespacedName{Name: ownerRef.Name, Namespace: pod.Namespace}, &cr); err != nil {
+					logger.Error(err, "Failed to get AzureDevOps CR")
+					return err
+				}
+
+				// Get PAT token
+				patToken, err := r.getPATToken(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Name: cr.Name, Namespace: cr.Namespace}}, cr.Spec.PatSecretRef)
+				if err != nil {
+					logger.Error(err, "Failed to get PAT token")
+					return err
+				}
+
+				// Create Azure DevOps client
+				azureDevOpsClient := azuredevops.NewAzureDevOpsClient(patToken, cr.Spec.OrgURL, cr.Spec.Project)
+
+				// Get pool ID
+				poolID, err := azureDevOpsClient.GetPoolIDByName(ctx, cr.Spec.PoolName)
+				if err != nil {
+					logger.Error(err, "Failed to get pool ID")
+					return err
+				}
+
+				// Get all agents
+				agents, err := azureDevOpsClient.GetAgentsInPool(ctx, poolID)
+				if err != nil {
+					logger.Error(err, "Failed to get agents in pool")
+					return err
+				}
+
+				// Find agent by name pattern
+				podNameWithoutHash := pod.Name
+				if idx := strings.LastIndex(pod.Name, "-"); idx > 0 {
+					podNameWithoutHash = pod.Name[:idx]
+					if idx2 := strings.LastIndex(podNameWithoutHash, "-"); idx2 > 0 {
+						podNameWithoutHash = podNameWithoutHash[:idx2]
+					}
+				}
+
+				success, failed := 0, 0
+				for _, agent := range agents {
+					// Match agent name with pod name (may need adjustment based on your naming pattern)
+					agentNamePattern := fmt.Sprintf("%s-", podNameWithoutHash)
+					if strings.HasPrefix(agent.Name, agentNamePattern) || agent.Name == podNameWithoutHash {
+						// Disable agent first
+						if agent.Enabled {
+							if err := azureDevOpsClient.DisableAgent(ctx, poolID, agent.ID); err != nil {
+								logger.Error(err, "Failed to disable agent", "agentID", agent.ID)
+								failed++
+								continue
+							}
+						}
+
+						// Delete agent
+						if err := azureDevOpsClient.DeleteAgent(ctx, poolID, agent.ID); err != nil {
+							logger.Error(err, "Failed to delete agent", "agentID", agent.ID)
+							failed++
+							continue
+						}
+
+						success++
+					}
+				}
+
+				logger.V(2).Info("Cleanup completed", "successfulCleanups", success, "failedCleanups", failed)
+
+				if failed > 0 {
+					return fmt.Errorf("failed to clean up %d Azure DevOps agents during pod event handling", failed)
+				}
+				return nil
+			}
+		}
+	}
+
+	return nil
 }

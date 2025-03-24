@@ -16,9 +16,7 @@ import (
 )
 
 const (
-	minReplicas     = 0  // Minimum number of replicas
-	maxReplicas     = 10 // Maximum number of replicas
-	jobsPerReplica  = 5  // Number of jobs per replica
+	jobsPerReplica  = 5 // Number of jobs per replica
 	requeueInterval = time.Second * 30
 )
 
@@ -53,11 +51,12 @@ func (r *Reconcile) Handle(ctx context.Context, azdo *v0beta0.AzureDevOps) (ctrl
 
 	// Calculate desired replicas
 	currentReplicas := azdo.Status.DesiredAgents
-	desiredReplicas := determineDesiredReplicas(queueLength, logger)
+	desiredReplicas := determineDesiredReplicas(queueLength, logger, azdo)
 
 	// Update status
 	azdo.Status.QueuedJobs = int32(queueLength)
 	azdo.Status.DesiredAgents = desiredReplicas
+	azdo.Status.ReadyAgents = currentReplicas
 
 	// Only update LastScalingTime if replica count changes
 	if currentReplicas != desiredReplicas {
@@ -79,23 +78,42 @@ func (r *Reconcile) Handle(ctx context.Context, azdo *v0beta0.AzureDevOps) (ctrl
 }
 
 // determineDesiredReplicas calculates the number of replicas based on queue length
-func determineDesiredReplicas(queueLength int, logger logr.Logger) int32 {
-	// If there are no jobs in queue, consider scaling to minimum
+func determineDesiredReplicas(queueLength int, logger logr.Logger, azdo *v0beta0.AzureDevOps) int32 {
+	// Determine min and max replicas from spec or use defaults
+	minReplicas := int32(1)
+	maxReplicas := int32(10)
+
+	// Parse spec values if defined
+	if azdo.Spec.MinReplicas > 0 {
+		minReplicas = azdo.Spec.MinReplicas
+	}
+	if azdo.Spec.MaxReplicas > 0 {
+		maxReplicas = azdo.Spec.MaxReplicas
+	}
+
+	if minReplicas > maxReplicas {
+		logger.Error(nil, "MinReplicas greater than MaxReplicas, swapping values",
+			"minReplicas", minReplicas, "maxReplicas", maxReplicas)
+		minReplicas, maxReplicas = maxReplicas, minReplicas
+	}
+
 	if queueLength == 0 {
-		logger.V(1).Info("No jobs in queue, scaling to minimum")
 		return minReplicas
 	}
 
-	// Calculate desired replicas with bounds
-	desired := (queueLength + jobsPerReplica - 1) / jobsPerReplica // Ceiling division
+	desired := int32((queueLength + jobsPerReplica - 1) / jobsPerReplica)
+
+	if desired < minReplicas {
+		desired = minReplicas
+	}
 	if desired > maxReplicas {
 		desired = maxReplicas
-		logger.Info("Queue length exceeds capacity",
+		logger.V(1).Info("Queue length exceeds capacity",
 			"queueLength", queueLength,
 			"maxReplicas", maxReplicas)
 	}
 
-	return int32(desired)
+	return desired
 }
 
 // calculateRequeueInterval determines the next reconciliation interval
