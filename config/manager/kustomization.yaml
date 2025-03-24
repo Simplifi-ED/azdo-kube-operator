@@ -5,4 +5,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/simplifi-ed/azure-devops-operator
-  newTag: v0.0.1-rc8
+  newTag: v0.0.1-rc9

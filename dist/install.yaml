@@ -1537,7 +1537,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: ghcr.io/simplifi-ed/azure-devops-operator:v0.0.1-rc8
+        image: ghcr.io/simplifi-ed/azure-devops-operator:v0.0.1-rc9
         livenessProbe:
           httpGet:
             path: /healthz
