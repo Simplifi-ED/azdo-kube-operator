@@ -8,15 +8,22 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
-	AzdoFinalizerName = "fr.simplified/azdo-finalizer"
-	apiVersion        = "7.1"
+	AzdoFinalizerName     = "fr.simplified/azdo-finalizer"
+	apiVersion            = "7.1"
+	defaultRateLimit      = 5
+	defaultMaxRetries     = 3
+	defaultRetryBaseDelay = 1 * time.Second
+	cacheExpiration       = 5 * time.Minute
 )
 
 type Client interface {
@@ -32,22 +39,113 @@ type Client interface {
 }
 
 type AzureDevOpsClient struct {
-	PATToken string
-	OrgURL   string
-	Project  string
+	PATToken    string
+	OrgURL      string
+	Project     string
+	limiter     *rate.Limiter
+	poolIDCache map[string]poolCacheEntry
+	cacheMutex  sync.RWMutex
+}
+
+type poolCacheEntry struct {
+	ID        int
+	expiresAt time.Time
 }
 
 func NewAzureDevOpsClient(patToken, orgURL, project string) *AzureDevOpsClient {
 	return &AzureDevOpsClient{
-		PATToken: strings.TrimSpace(patToken),
-		OrgURL:   strings.TrimRight(orgURL, "/"),
-		Project:  project,
+		PATToken:    strings.TrimSpace(patToken),
+		OrgURL:      strings.TrimRight(orgURL, "/"),
+		Project:     project,
+		limiter:     rate.NewLimiter(rate.Limit(defaultRateLimit), 1),
+		poolIDCache: make(map[string]poolCacheEntry),
 	}
 }
 
 type QueueNameResponse struct {
 	Count int         `json:"count"`
 	Value []AgentPool `json:"value"`
+}
+
+func (a *AzureDevOpsClient) doRequestWithBackoff(ctx context.Context, req *http.Request) (*http.Response, error) {
+	logger := log.FromContext(ctx)
+	var resp *http.Response
+	var err error
+
+	// Wait for rate limiter
+	if err := a.limiter.Wait(ctx); err != nil {
+		return nil, fmt.Errorf("rate limiter wait: %w", err)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	for attempt := 0; attempt < defaultMaxRetries; attempt++ {
+		resp, err = client.Do(req)
+
+		if err != nil {
+			if ctx.Err() == context.Canceled {
+				return nil, fmt.Errorf("request canceled: %w", err)
+			}
+
+			// Calculate backoff with jitter
+			backoff := defaultRetryBaseDelay * time.Duration(1<<attempt)
+			jitter := time.Duration(rand.Int63n(int64(backoff / 2)))
+			sleepTime := backoff + jitter
+
+			select {
+			case <-time.After(sleepTime):
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
+		// Check for rate limiting response
+		if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
+			// Get retry-after if available
+			retryAfter := resp.Header.Get("Retry-After")
+			var sleepTime time.Duration
+
+			if retryAfter != "" {
+				retrySeconds, err := strconv.Atoi(retryAfter)
+				if err == nil {
+					sleepTime = time.Duration(retrySeconds) * time.Second
+				}
+			}
+
+			if sleepTime == 0 {
+				// Default backoff with jitter
+				backoff := defaultRetryBaseDelay * time.Duration(1<<attempt)
+				jitter := time.Duration(rand.Int63n(int64(backoff / 2)))
+				sleepTime = backoff + jitter
+			}
+
+			// Close the response before waiting
+			if resp.Body != nil {
+				defer func() {
+					if err := resp.Body.Close(); err != nil {
+						logger.Error(err, "Failed to close response body")
+					}
+				}()
+			}
+
+			select {
+			case <-time.After(sleepTime):
+				// Retry the request with a fresh client
+				req = req.Clone(ctx)
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
+		// If we got here with a valid response, return it
+		if resp != nil {
+			return resp, nil
+		}
+	}
+
+	return resp, err
 }
 
 type AgentPool struct {
@@ -205,36 +303,28 @@ func GetQueueIdFromName(ctx context.Context, orgURL, project, patToken, poolName
 func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string) (int, error) {
 	logger := log.FromContext(ctx)
 
-	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	poolID, err := GetQueueIdFromName(ctxWithTimeout, a.OrgURL, a.Project, a.PATToken, poolName)
+	poolID, err := a.GetPoolIDByName(ctx, poolName)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get pool ID: %w", err)
 	}
-	logger.V(1).Info("Retrieved Pool ID", "poolID", poolID)
 
-	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%s/jobrequests?api-version=7.1",
-		a.OrgURL, poolID)
+	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/jobrequests?api-version=%s",
+		a.OrgURL, poolID, apiVersion)
 
-	req, err := http.NewRequestWithContext(ctxWithTimeout, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", buildAuthHeader(a.PATToken))
 
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	resp, err := client.Do(req)
+	resp, err := a.doRequestWithBackoff(ctx, req)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute request: %w", err)
 	}
 	defer func() {
-		if cerr := resp.Body.Close(); cerr != nil {
-			logger.Error(cerr, "Failed to close response body")
+		if err := resp.Body.Close(); err != nil {
+			logger.Error(err, "Failed to close response body")
 		}
 	}()
 
@@ -410,6 +500,15 @@ func (a *AzureDevOpsClient) GetAgentsInPool(ctx context.Context, poolID int) ([]
 
 func (a *AzureDevOpsClient) GetPoolIDByName(ctx context.Context, poolName string) (int, error) {
 	logger := log.FromContext(ctx)
+
+	// Check cache first
+	a.cacheMutex.RLock()
+	if entry, ok := a.poolIDCache[poolName]; ok && entry.expiresAt.After(time.Now()) {
+		a.cacheMutex.RUnlock()
+		return entry.ID, nil
+	}
+	a.cacheMutex.RUnlock()
+
 	url := fmt.Sprintf("%s/_apis/distributedtask/pools?poolName=%s&api-version=%s",
 		a.OrgURL, poolName, apiVersion)
 
@@ -420,8 +519,7 @@ func (a *AzureDevOpsClient) GetPoolIDByName(ctx context.Context, poolName string
 
 	req.Header.Set("Authorization", buildAuthHeader(a.PATToken))
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := a.doRequestWithBackoff(ctx, req)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -432,7 +530,6 @@ func (a *AzureDevOpsClient) GetPoolIDByName(ctx context.Context, poolName string
 	}()
 
 	body, err := io.ReadAll(resp.Body)
-
 	if err != nil {
 		return 0, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -450,6 +547,16 @@ func (a *AzureDevOpsClient) GetPoolIDByName(ctx context.Context, poolName string
 		return 0, fmt.Errorf("no pool found with name: %s", poolName)
 	}
 
-	logger.V(1).Info("Retrieved pool ID", "poolName", poolName, "poolID", queueResp.Value[0].ID)
-	return queueResp.Value[0].ID, nil
+	poolID := queueResp.Value[0].ID
+
+	// Cache the result
+	a.cacheMutex.Lock()
+	a.poolIDCache[poolName] = poolCacheEntry{
+		ID:        poolID,
+		expiresAt: time.Now().Add(cacheExpiration),
+	}
+	a.cacheMutex.Unlock()
+
+	logger.V(1).Info("Retrieved pool ID", "poolName", poolName, "poolID", poolID)
+	return poolID, nil
 }
