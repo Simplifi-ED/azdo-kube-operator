@@ -362,44 +362,35 @@ func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string)
 
 func (a *AzureDevOpsClient) DeleteAgent(ctx context.Context, poolID int, agentID int) error {
 	logger := log.FromContext(ctx)
-	for attempt := 0; attempt < 3; attempt++ {
-		url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents/%d?api-version=%s",
-			a.OrgURL, poolID, agentID, apiVersion)
+	url := fmt.Sprintf("%s/_apis/distributedtask/pools/%d/agents/%d?api-version=%s",
+		a.OrgURL, poolID, agentID, apiVersion)
 
-		req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
-		if err != nil {
-			return fmt.Errorf("failed to create request: %w", err)
-		}
-
-		req.Header.Set("Authorization", buildAuthHeader(a.PATToken))
-
-		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Do(req)
-		if err != nil {
-			return fmt.Errorf("failed to execute request: %w", err)
-		}
-
-		body, _ := io.ReadAll(resp.Body)
-		if err := resp.Body.Close(); err != nil {
-			logger.Error(err, "Failed to close response body")
-		}
-
-		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
-			return nil
-		}
-
-		if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "TaskAgentJobStillRunningException") {
-			if attempt < 2 {
-				jitter := time.Duration(rand.Int63n(1000)) * time.Millisecond
-				time.Sleep(time.Duration(attempt+1)*5*time.Second + jitter)
-				continue
-			}
-		}
-
-		return fmt.Errorf("unexpected status code: %d - %s", resp.StatusCode, string(body))
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	return fmt.Errorf("failed to delete agent after retries")
+	req.Header.Set("Authorization", buildAuthHeader(a.PATToken))
+
+	resp, err := a.doRequestWithBackoff(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to execute request: %w", err)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	if err := resp.Body.Close(); err != nil {
+		logger.Error(err, "Failed to close response body")
+	}
+
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+
+	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "TaskAgentJobStillRunningException") {
+		return fmt.Errorf("failed to delete agent as it is still running jobs")
+	}
+
+	return fmt.Errorf("unexpected status code: %d - %s", resp.StatusCode, string(body))
 }
 
 func (a *AzureDevOpsClient) DisableAgent(ctx context.Context, poolID int, agentID int) error {

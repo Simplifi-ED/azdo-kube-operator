@@ -374,9 +374,9 @@ func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context,
 			if agent.Enabled {
 				if err := client.DisableAgent(ctx, poolID, agent.ID); err != nil {
 					logger.Error(err, "Failed to disable agent", "agentID", agent.ID)
-					failed++
 					failureError = multierr.Append(failureError, err)
-					continue
+					// failed++
+					// continue
 				}
 			}
 
@@ -481,6 +481,9 @@ func (r *AzureDevOpsReconciler) handlePodEvent(ctx context.Context, pod *corev1.
 
 				logger.V(2).Info("Cleanup completed", "successfulCleanups", success, "failedCleanups", failed)
 
+				if failed > 0 {
+					return fmt.Errorf("failed to clean up %d Azure DevOps agents during pod event handling", failed)
+				}
 				return nil
 			}
 		}
