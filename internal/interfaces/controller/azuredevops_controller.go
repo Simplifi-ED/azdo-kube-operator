@@ -437,16 +437,19 @@ func (r *AzureDevOpsReconciler) handlePodEvent(ctx context.Context, pod *corev1.
 				}
 
 				// Find agent by name pattern
-				podNameWithoutPrefix := pod.Name
+				podNameWithoutHash := pod.Name
 				if idx := strings.LastIndex(pod.Name, "-"); idx > 0 {
-					podNameWithoutPrefix = pod.Name[:idx]
+					podNameWithoutHash = pod.Name[:idx]
+					if idx2 := strings.LastIndex(podNameWithoutHash, "-"); idx2 > 0 {
+						podNameWithoutHash = podNameWithoutHash[:idx2]
+					}
 				}
 
 				success, failed := 0, 0
 				for _, agent := range agents {
 					// Match agent name with pod name (may need adjustment based on your naming pattern)
-					agentNamePattern := fmt.Sprintf("%s-", podNameWithoutPrefix)
-					if strings.HasPrefix(agent.Name, agentNamePattern) || agent.Name == podNameWithoutPrefix {
+					agentNamePattern := fmt.Sprintf("%s-", podNameWithoutHash)
+					if strings.HasPrefix(agent.Name, agentNamePattern) || agent.Name == podNameWithoutHash {
 						// Disable agent first
 						if agent.Enabled {
 							if err := azureDevOpsClient.DisableAgent(ctx, poolID, agent.ID); err != nil {
