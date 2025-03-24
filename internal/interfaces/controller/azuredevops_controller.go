@@ -9,6 +9,7 @@ import (
 	usecases "fr.simplified/azuredevops/internal/app/usecase"
 	"fr.simplified/azuredevops/internal/infra/azuredevops"
 	"fr.simplified/azuredevops/internal/infra/kubernetes"
+	"go.uber.org/multierr"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -365,6 +366,7 @@ func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context,
 	// Find and disable/delete agents with names that match our pattern
 	agentPrefix := fmt.Sprintf("%s-", cr.Name)
 	success, failed := 0, 0
+	var failureError error
 	for _, agent := range agents {
 		// Check if the agent belongs to this resource by checking name prefix
 		if strings.HasPrefix(agent.Name, agentPrefix) {
@@ -373,6 +375,7 @@ func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context,
 				if err := client.DisableAgent(ctx, poolID, agent.ID); err != nil {
 					logger.Error(err, "Failed to disable agent", "agentID", agent.ID)
 					failed++
+					failureError = multierr.Append(failureError, err)
 					continue
 				}
 			}
@@ -381,12 +384,18 @@ func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context,
 			if err := client.DeleteAgent(ctx, poolID, agent.ID); err != nil {
 				logger.Error(err, "Failed to delete agent", "agentID", agent.ID)
 				failed++
+				failureError = multierr.Append(failureError, err)
 				continue
 			}
 
 			success++
 		}
 	}
+
+	if failed > 0 {
+		return fmt.Errorf("failed to clean up %d Azure DevOps agents: %w", failed, failureError)
+	}
+
 	logger.V(1).Info("Azure DevOps resource cleanup completed", "successfulCleanups", success, "failedCleanups", failed)
 	return nil
 }
