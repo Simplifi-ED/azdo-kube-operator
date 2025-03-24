@@ -320,9 +320,11 @@ func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string)
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute request: %w", err)
 	}
-	if errClose := resp.Body.Close(); errClose != nil {
-		logger.Error(errClose, "Failed to close response body")
-	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Error(err, "Failed to close response body")
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -337,7 +339,6 @@ func (a *AzureDevOpsClient) GetQueueLength(ctx context.Context, poolName string)
 	if err := json.NewDecoder(resp.Body).Decode(&queueResp); err != nil {
 		return 0, fmt.Errorf("failed to parse response: %w", err)
 	}
-
 	// If there are no jobs at all, return 0
 	if queueResp.Count == 0 || len(queueResp.Value) == 0 {
 		logger.V(1).Info("No jobs in queue", "poolName", poolName)
@@ -506,9 +507,11 @@ func (a *AzureDevOpsClient) GetPoolIDByName(ctx context.Context, poolName string
 	if err != nil {
 		return 0, fmt.Errorf("failed to execute request: %w", err)
 	}
-	if errClose := resp.Body.Close(); errClose != nil {
-		logger.Error(errClose, "Failed to close response body")
-	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Error(err, "Failed to close response body")
+		}
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
