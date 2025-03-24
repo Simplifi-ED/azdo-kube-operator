@@ -92,7 +92,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			logger.Error(err, "Failed to handle pod event")
 			return ctrl.Result{RequeueAfter: time.Minute}, err
 		}
-		return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	} else if !apierrors.IsNotFound(err) {
 		// Unexpected error
 		logger.Error(err, "Failed to get resource")
@@ -104,7 +104,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err := r.Get(ctxWithTimeout, req.NamespacedName, &cr); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.V(1).Info("Resource not found, ignoring")
-			return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 		logger.Error(err, "Failed to get resource")
 		return ctrl.Result{}, err
@@ -147,10 +147,10 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 
 			logger.Info("Successfully cleaned up Azure DevOps resources")
-			return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 		}
 		// Finalizer already removed, nothing to do
-		return ctrl.Result{RequeueAfter: 3 * time.Second}, nil
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 	// Add finalizer if it doesn't exist
 	if !controllerutil.ContainsFinalizer(&cr, azuredevops.AzdoFinalizerName) {
@@ -375,8 +375,8 @@ func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context,
 				if err := client.DisableAgent(ctx, poolID, agent.ID); err != nil {
 					logger.Error(err, "Failed to disable agent", "agentID", agent.ID)
 					failureError = multierr.Append(failureError, err)
-					// failed++
-					// continue
+					failed++
+					continue
 				}
 			}
 
