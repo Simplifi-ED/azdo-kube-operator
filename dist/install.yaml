@@ -987,6 +987,10 @@ spec:
                 description: 'Docker specifies Docker-related configuration (Possible
                   values: dind, buildkit)'
                 type: string
+              ephemeral:
+                description: 'Ephemeral specifies whether the agent pods should be
+                  ephemeral or not (default: true)'
+                type: boolean
               image:
                 description: Image is the container image for the Azure DevOps agent
                 type: string
@@ -1537,7 +1541,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: ghcr.io/simplifi-ed/azure-devops-operator:v0.0.1-rc9
+        image: ghcr.io/simplifi-ed/azure-devops-operator:v0.0.3
         livenessProbe:
           httpGet:
             path: /healthz
