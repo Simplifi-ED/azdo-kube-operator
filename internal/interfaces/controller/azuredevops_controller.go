@@ -361,7 +361,10 @@ func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context,
 	}
 
 	// Get all agents in the pool
-	agents, _ := client.GetAgentsInPool(ctx, poolID)
+	agents, err := client.GetAgentsInPool(ctx, poolID)
+	if err != nil {
+		return fmt.Errorf("failed to get agents in pool: %w", err)
+	}
 	// Find and disable/delete agents with names that match our pattern
 	success, failed := 0, 0
 	var failureError error
@@ -448,11 +451,11 @@ func (r *AzureDevOpsReconciler) handlePodEvent(ctx context.Context, pod *corev1.
 					if strings.HasPrefix(agent.Name, podNameWithoutHash) {
 						if agent.Enabled {
 							if err := azureDevOpsClient.DisableAgent(ctx, poolID, agent.ID); err != nil {
-								logger.Error(err, "Failed to disable agent", "agentID", agent.ID)
+								return fmt.Errorf("failed to disable agent %d: %w", agent.ID, err)
 							}
 						}
 						if err := azureDevOpsClient.DeleteAgent(ctx, poolID, agent.ID); err != nil {
-							logger.Error(err, "Failed to delete agent", "agentID", agent.ID)
+							return fmt.Errorf("failed to delete agent %d: %w", agent.ID, err)
 						}
 					}
 				}

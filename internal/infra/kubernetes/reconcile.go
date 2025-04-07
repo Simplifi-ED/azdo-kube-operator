@@ -34,6 +34,7 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 		Docker:             cr.Spec.Docker,
 		Tolerations:        cr.Spec.Tolerations,
 		Affinity:           cr.Spec.Affinity,
+		Ephemeral:          cr.Spec.Ephemeral,
 		Resources: models.ResourceRequirements{
 			CPURequest:    cr.Spec.Resources.Requests.Cpu().String(),
 			MemoryRequest: cr.Spec.Resources.Requests.Memory().String(),
@@ -138,10 +139,13 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 	for i := range podTemplateSpec.Spec.Containers {
 		if podTemplateSpec.Spec.Containers[i].Name == "azdo-agent" {
 			podTemplateSpec.Spec.Containers[i].Command = []string{"/bin/sh", "-c"}
-			podTemplateSpec.Spec.Containers[i].Args = []string{
-				"trap 'touch /usr/share/pod/done' EXIT\n./start.sh",
-				"--once",
+
+			command := "trap 'touch /usr/share/pod/done' EXIT && ./start.sh"
+			if azdo.Ephemeral {
+				command += " --once"
 			}
+
+			podTemplateSpec.Spec.Containers[i].Args = []string{command}
 			podTemplateSpec.Spec.Containers[i].VolumeMounts = append(
 				podTemplateSpec.Spec.Containers[i].VolumeMounts,
 				corev1.VolumeMount{

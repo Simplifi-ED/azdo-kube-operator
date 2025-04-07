@@ -21,6 +21,7 @@ type AzureDevOps struct {
 	Docker             string
 	Tolerations        []corev1.Toleration
 	Affinity           *corev1.Affinity
+	Ephemeral          bool `json:"ephemeral,omitempty"`
 }
 
 // ResourceRequirements définit les requêtes et limites de ressources
