@@ -9,7 +9,6 @@ import (
 	usecases "fr.simplified/azuredevops/internal/app/usecase"
 	"fr.simplified/azuredevops/internal/infra/azuredevops"
 	"fr.simplified/azuredevops/internal/infra/kubernetes"
-	"go.uber.org/multierr"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -155,6 +154,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Add finalizer if it doesn't exist
 	if !controllerutil.ContainsFinalizer(&cr, azuredevops.AzdoFinalizerName) {
 		controllerutil.AddFinalizer(&cr, azuredevops.AzdoFinalizerName)
+		r.Update(ctx, &cr)
 		if err := r.Update(ctxWithTimeout, &cr); err != nil {
 			logger.Error(err, "Failed to add finalizer")
 			return ctrl.Result{}, err
@@ -358,37 +358,23 @@ func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context,
 	}
 
 	// Get all agents in the pool
-	agents, err := client.GetAgentsInPool(ctx, poolID)
-	if err != nil {
-		return fmt.Errorf("failed to get agents in pool: %w", err)
-	}
-
+	agents, _ := client.GetAgentsInPool(ctx, poolID)
 	// Find and disable/delete agents with names that match our pattern
-	agentPrefix := fmt.Sprintf("%s-", cr.Name)
 	success, failed := 0, 0
 	var failureError error
+
 	for _, agent := range agents {
-		// Check if the agent belongs to this resource by checking name prefix
-		if strings.HasPrefix(agent.Name, agentPrefix) {
+		if strings.HasPrefix(agent.Name, fmt.Sprintf("%s-", cr.Name)) { // Match agents to CR
 			// Disable agent first
 			if agent.Enabled {
 				if err := client.DisableAgent(ctx, poolID, agent.ID); err != nil {
-					logger.Error(err, "Failed to disable agent", "agentID", agent.ID)
-					failureError = multierr.Append(failureError, err)
-					failed++
-					continue
+					return err
 				}
 			}
-
 			// Delete agent
 			if err := client.DeleteAgent(ctx, poolID, agent.ID); err != nil {
-				logger.Error(err, "Failed to delete agent", "agentID", agent.ID)
-				failed++
-				failureError = multierr.Append(failureError, err)
-				continue
+				return err
 			}
-
-			success++
 		}
 	}
 
@@ -456,26 +442,15 @@ func (r *AzureDevOpsReconciler) handlePodEvent(ctx context.Context, pod *corev1.
 
 				success, failed := 0, 0
 				for _, agent := range agents {
-					// Match agent name with pod name (may need adjustment based on your naming pattern)
-					agentNamePattern := fmt.Sprintf("%s-", podNameWithoutHash)
-					if strings.HasPrefix(agent.Name, agentNamePattern) || agent.Name == podNameWithoutHash {
-						// Disable agent first
+					if strings.HasPrefix(agent.Name, podNameWithoutHash) {
 						if agent.Enabled {
 							if err := azureDevOpsClient.DisableAgent(ctx, poolID, agent.ID); err != nil {
 								logger.Error(err, "Failed to disable agent", "agentID", agent.ID)
-								failed++
-								continue
 							}
 						}
-
-						// Delete agent
 						if err := azureDevOpsClient.DeleteAgent(ctx, poolID, agent.ID); err != nil {
 							logger.Error(err, "Failed to delete agent", "agentID", agent.ID)
-							failed++
-							continue
 						}
-
-						success++
 					}
 				}
 
