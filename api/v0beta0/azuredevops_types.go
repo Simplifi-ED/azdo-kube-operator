@@ -77,6 +77,10 @@ type AzureDevOpsSpec struct {
 	// Affinity specifies the affinity for the agent pod
 	// +kubebuilder:validation:Optional
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+
+	// Ephemeral specifies whether the agent pods should be ephemeral or not (default: true)
+	// +kubebuilder:validation:Optional
+	Ephemeral bool `json:"ephemeral,omitempty"`
 }
 
 // AzureDevOpsStatus defines the observed state of AzureDevOps.
