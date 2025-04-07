@@ -154,7 +154,10 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Add finalizer if it doesn't exist
 	if !controllerutil.ContainsFinalizer(&cr, azuredevops.AzdoFinalizerName) {
 		controllerutil.AddFinalizer(&cr, azuredevops.AzdoFinalizerName)
-		r.Update(ctx, &cr)
+		if err := r.Update(ctx, &cr); err != nil {
+			logger.Error(err, "Failed to update AzureDevOps resource")
+			return ctrl.Result{}, err
+		}
 		if err := r.Update(ctxWithTimeout, &cr); err != nil {
 			logger.Error(err, "Failed to add finalizer")
 			return ctrl.Result{}, err
