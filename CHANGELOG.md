@@ -13,3 +13,4 @@
 - CRD group changed from `agents.fr.simplified` to **`agents.omnivya`**.
 - The recommended `apiVersion` for the custom resource is now **`agents.omnivya/v1beta1`**.
 - Go import path changed from `fr.simplified/azuredevops` to **`omnivya/azuredevops`**.
+ - Existing `agents.fr.simplified/v0beta0` resources are **not** auto-converted; see `docs/UPGRADE-v0.0.x-to-v0.1.0.md` for manual migration steps (export, update apiVersion/group, and re-apply).
