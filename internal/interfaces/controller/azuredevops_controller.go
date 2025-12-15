@@ -117,7 +117,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		crCopy.Status.Conditions = []metav1.Condition{}
 	}
 	// examine DeletionTimestamp to determine if object is under deletion
-	if !cr.ObjectMeta.DeletionTimestamp.IsZero() {
+	if !cr.DeletionTimestamp.IsZero() {
 		// Resource is being deleted
 		if controllerutil.ContainsFinalizer(&cr, azuredevops.AzdoFinalizerName) {
 			logger.Info("Resource is being deleted, cleaning up Azure DevOps resources")

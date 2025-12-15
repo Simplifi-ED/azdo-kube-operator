@@ -3,8 +3,9 @@ package kubernetes
 import (
 	"context"
 
-	"omnivya/azuredevops/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"omnivya/azuredevops/api/v1beta1"
 )
 
 // Client définit l'interface de notre client Kubernetes.
