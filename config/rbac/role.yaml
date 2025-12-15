@@ -18,7 +18,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - agents.fr.simplified
+  - agents.omnivya
   resources:
   - azuredevops
   verbs:
@@ -30,13 +30,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - agents.fr.simplified
+  - agents.omnivya
   resources:
   - azuredevops/finalizers
   verbs:
   - update
 - apiGroups:
-  - agents.fr.simplified
+  - agents.omnivya
   resources:
   - azuredevops/status
   verbs:

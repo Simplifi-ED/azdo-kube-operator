@@ -37,9 +37,9 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	agentsv0beta0 "fr.simplified/azuredevops/api/v0beta0"
-	"fr.simplified/azuredevops/internal/interfaces/controller"
-	// "fr.simplified/azuredevops/internal/controller"
+	agentsv1beta1 "omnivya/azuredevops/api/v1beta1"
+	"omnivya/azuredevops/internal/interfaces/controller"
+	// "omnivya/azuredevops/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -51,7 +51,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(agentsv0beta0.AddToScheme(scheme))
+	utilruntime.Must(agentsv1beta1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -185,7 +185,7 @@ func main() {
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "fc7ddcf2.fr.simplified",
+		LeaderElectionID:       "fc7ddcf2.omnivya",
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly

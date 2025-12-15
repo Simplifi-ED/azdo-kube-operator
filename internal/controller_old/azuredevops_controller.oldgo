@@ -20,7 +20,7 @@ import (
 	"context"
 	"strings"
 
-	agentsv0beta0 "fr.simplified/azuredevops/api/v0beta0"
+	agentsv0beta0 "omnivya/azuredevops/api/v0beta0"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,9 +37,9 @@ type AzureDevOpsReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops/finalizers,verbs=update
+// +kubebuilder:rbac:groups=agents.omnivya,resources=azuredevops,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=agents.omnivya,resources=azuredevops/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=agents.omnivya,resources=azuredevops/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to

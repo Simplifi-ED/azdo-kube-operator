@@ -27,7 +27,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	agentsv0beta0 "fr.simplified/azuredevops/api/v0beta0"
+	agentsv0beta0 "omnivya/azuredevops/api/v0beta0"
 )
 
 var _ = Describe("AzureDevOps Controller", func() {
