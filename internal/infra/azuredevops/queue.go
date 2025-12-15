@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	AzdoFinalizerName     = "fr.simplified/azdo-finalizer"
+	AzdoFinalizerName     = "omnivya/azdo-finalizer"
 	apiVersion            = "7.1"
 	defaultRateLimit      = 5
 	defaultMaxRetries     = 3

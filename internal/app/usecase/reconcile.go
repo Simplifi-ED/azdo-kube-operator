@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"fr.simplified/azuredevops/api/v0beta0"
-	"fr.simplified/azuredevops/internal/infra/azuredevops"
-	"fr.simplified/azuredevops/internal/infra/kubernetes"
+	"omnivya/azuredevops/api/v1beta1"
+	"omnivya/azuredevops/internal/infra/azuredevops"
+	"omnivya/azuredevops/internal/infra/kubernetes"
 	"github.com/go-logr/logr"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,7 +33,7 @@ func NewReconcile(k kubernetes.Client, a azuredevops.Client) *Reconcile {
 	}
 }
 
-func (r *Reconcile) Handle(ctx context.Context, azdo *v0beta0.AzureDevOps) (ctrl.Result, error) {
+func (r *Reconcile) Handle(ctx context.Context, azdo *v1beta1.AzureDevOps) (ctrl.Result, error) {
 	logger := ctrlLog.FromContext(ctx)
 
 	// Validate secrets
@@ -78,7 +78,7 @@ func (r *Reconcile) Handle(ctx context.Context, azdo *v0beta0.AzureDevOps) (ctrl
 }
 
 // determineDesiredReplicas calculates the number of replicas based on queue length
-func determineDesiredReplicas(queueLength int, logger logr.Logger, azdo *v0beta0.AzureDevOps) int32 {
+func determineDesiredReplicas(queueLength int, logger logr.Logger, azdo *v1beta1.AzureDevOps) int32 {
 	// Determine min and max replicas from spec or use defaults
 	minReplicas := int32(1)
 	maxReplicas := int32(10)

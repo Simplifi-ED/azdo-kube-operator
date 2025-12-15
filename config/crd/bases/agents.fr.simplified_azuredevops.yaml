@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: azuredevops.agents.fr.simplified
+  name: azuredevops.agents.omnivya
 spec:
-  group: agents.fr.simplified
+  group: agents.omnivya
   names:
     kind: AzureDevOps
     listKind: AzureDevOpsList
@@ -30,7 +30,7 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v0beta0
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: AzureDevOps is the Schema for the azuredevops API.

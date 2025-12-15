@@ -12,9 +12,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: azuredevops.agents.fr.simplified
+  name: azuredevops.agents.omnivya
 spec:
-  group: agents.fr.simplified
+  group: agents.omnivya
   names:
     kind: AzureDevOps
     listKind: AzureDevOpsList
@@ -38,7 +38,7 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    name: v0beta0
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: AzureDevOps is the Schema for the azuredevops API.
@@ -1287,13 +1287,13 @@ metadata:
   name: azdo-agent-operator-azuredevops-admin-role
 rules:
 - apiGroups:
-  - agents.fr.simplified
+  - agents.omnivya
   resources:
   - azuredevops
   verbs:
   - '*'
 - apiGroups:
-  - agents.fr.simplified
+  - agents.omnivya
   resources:
   - azuredevops/status
   verbs:
@@ -1308,7 +1308,7 @@ metadata:
   name: azdo-agent-operator-azuredevops-editor-role
 rules:
 - apiGroups:
-  - agents.fr.simplified
+  - agents.omnivya
   resources:
   - azuredevops
   verbs:
@@ -1320,7 +1320,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - agents.fr.simplified
+  - agents.omnivya
   resources:
   - azuredevops/status
   verbs:
@@ -1335,7 +1335,7 @@ metadata:
   name: azdo-agent-operator-azuredevops-viewer-role
 rules:
 - apiGroups:
-  - agents.fr.simplified
+  - agents.omnivya
   resources:
   - azuredevops
   verbs:
@@ -1343,7 +1343,7 @@ rules:
   - list
   - watch
 - apiGroups:
-  - agents.fr.simplified
+  - agents.omnivya
   resources:
   - azuredevops/status
   verbs:
@@ -1368,7 +1368,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - agents.fr.simplified
+  - agents.omnivya
   resources:
   - azuredevops
   verbs:
@@ -1380,13 +1380,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - agents.fr.simplified
+  - agents.omnivya
   resources:
   - azuredevops/finalizers
   verbs:
   - update
 - apiGroups:
-  - agents.fr.simplified
+  - agents.omnivya
   resources:
   - azuredevops/status
   verbs:

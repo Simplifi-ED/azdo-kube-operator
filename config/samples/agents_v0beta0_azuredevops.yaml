@@ -1,4 +1,4 @@
-# apiVersion: agents.fr.simplified/v0beta0
+# apiVersion: agents.omnivya/v1beta1
 # kind: AzureDevOps
 # metadata:
 #   labels:
@@ -16,7 +16,7 @@
 #   imagePullSecretRef: my-secret
 #   mode: Deployement
 # ---
-# apiVersion: agents.fr.simplified/v0beta0
+# apiVersion: agents.omnivya/v1beta1
 # kind: AzureDevOps
 # metadata:
 #   labels:
@@ -34,7 +34,7 @@
 #   imagePullSecretRef: my-secret
 #   mode: Jobs
 # ---
-apiVersion: agents.fr.simplified/v0beta0
+apiVersion: agents.omnivya/v1beta1
 kind: AzureDevOps
 metadata:
   labels:

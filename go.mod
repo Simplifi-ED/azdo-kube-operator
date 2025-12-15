@@ -1,4 +1,4 @@
-module fr.simplified/azuredevops
+module omnivya/azuredevops
 
 go 1.24.5
 

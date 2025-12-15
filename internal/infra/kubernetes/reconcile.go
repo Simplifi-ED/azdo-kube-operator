@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"fr.simplified/azuredevops/api/v0beta0"
-	"fr.simplified/azuredevops/internal/domain/models"
+	"omnivya/azuredevops/api/v1beta1"
+	"omnivya/azuredevops/internal/domain/models"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -17,7 +17,7 @@ import (
 
 // ReconcileDeployment est la fonction principale de réconciliation, qui construit le PodTemplateSpec
 // et appelle ensuite la fonction de réconciliation adaptée (Deployment ou Job).
-func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.AzureDevOps, replicas int32) error {
+func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v1beta1.AzureDevOps, replicas int32) error {
 	logger := log.FromContext(ctx)
 
 	// Construction de l'objet azdo basé sur le CR.

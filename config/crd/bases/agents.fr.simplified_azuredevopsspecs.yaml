@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
-  name: azuredevopsspecs.agents.fr.simplified
+  name: azuredevopsspecs.agents.omnivya
 spec:
-  group: agents.fr.simplified
+  group: agents.omnivya
   names:
     kind: AzureDevOpsSpec
     listKind: AzureDevOpsSpecList

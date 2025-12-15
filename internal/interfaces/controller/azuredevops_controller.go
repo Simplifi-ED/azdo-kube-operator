@@ -6,9 +6,10 @@ import (
 	"strings"
 	"time"
 
-	usecases "fr.simplified/azuredevops/internal/app/usecase"
-	"fr.simplified/azuredevops/internal/infra/azuredevops"
-	"fr.simplified/azuredevops/internal/infra/kubernetes"
+	"omnivya/azuredevops/api/v1beta1"
+	usecases "omnivya/azuredevops/internal/app/usecase"
+	"omnivya/azuredevops/internal/infra/azuredevops"
+	"omnivya/azuredevops/internal/infra/kubernetes"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -21,7 +22,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	agentsv0beta0 "fr.simplified/azuredevops/api/v0beta0"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/record"
@@ -34,9 +34,9 @@ const (
 )
 
 // RBAC markers for the operator:
-// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops/finalizers,verbs=update
+// +kubebuilder:rbac:groups=agents.omnivya,resources=azuredevops,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=agents.omnivya,resources=azuredevops/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=agents.omnivya,resources=azuredevops/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
@@ -61,15 +61,15 @@ func (r *AzureDevOpsReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.Usecase = usecases.NewReconcile(kubernetesClient, nil) // AzureDevOpsClient sera injecté dans Reconcile.Handle
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&agentsv0beta0.AzureDevOps{}).
+		For(&v1beta1.AzureDevOps{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Pod{}).
 		Complete(r)
 }
 
-// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=agents.fr.simplified,resources=azuredevops/finalizers,verbs=update
+// +kubebuilder:rbac:groups=agents.omnivya,resources=azuredevops,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=agents.omnivya,resources=azuredevops/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=agents.omnivya,resources=azuredevops/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
 // Update your Reconcile function
@@ -99,7 +99,7 @@ func (r *AzureDevOpsReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Récupérer le CR
-	var cr agentsv0beta0.AzureDevOps
+	var cr v1beta1.AzureDevOps
 	if err := r.Get(ctxWithTimeout, req.NamespacedName, &cr); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.V(1).Info("Resource not found, ignoring")
@@ -284,13 +284,13 @@ func (r *AzureDevOpsReconciler) getPATToken(ctx context.Context, req ctrl.Reques
 
 // Helper function to update status
 // Fix the updateStatus function to properly update all status fields
-func (r *AzureDevOpsReconciler) updateStatus(ctx context.Context, cr *agentsv0beta0.AzureDevOps, phase string, message string) {
+func (r *AzureDevOpsReconciler) updateStatus(ctx context.Context, cr *v1beta1.AzureDevOps, phase string, message string) {
 	logger := log.FromContext(ctx)
 
 	// Try up to 3 times to update the status
 	for i := 0; i < 3; i++ {
 		// Get the latest version of the CR
-		updatedCR := &agentsv0beta0.AzureDevOps{}
+		updatedCR := &v1beta1.AzureDevOps{}
 		if err := r.Get(ctx, types.NamespacedName{
 			Name:      cr.Name,
 			Namespace: cr.Namespace,
@@ -348,7 +348,7 @@ func calculateRequeueInterval(lastFailure *metav1.Time) time.Duration {
 	}
 	return interval
 }
-func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context, cr *agentsv0beta0.AzureDevOps, client azuredevops.Client) error {
+func (r *AzureDevOpsReconciler) deleteExternalAzDOResources(ctx context.Context, cr *v1beta1.AzureDevOps, client azuredevops.Client) error {
 	logger := log.FromContext(ctx).WithValues(
 		"name", cr.Name,
 		"namespace", cr.Namespace,
@@ -407,7 +407,7 @@ func (r *AzureDevOpsReconciler) handlePodEvent(ctx context.Context, pod *corev1.
 				logger.V(2).Info("Processing deleted/completed pod")
 
 				// Get the CR
-				cr := agentsv0beta0.AzureDevOps{}
+				cr := v1beta1.AzureDevOps{}
 				if err := r.Get(ctx, types.NamespacedName{Name: ownerRef.Name, Namespace: pod.Namespace}, &cr); err != nil {
 					logger.Error(err, "Failed to get AzureDevOps CR")
 					return err
