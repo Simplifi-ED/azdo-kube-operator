@@ -149,5 +149,3 @@ func (in *AzureDevOpsStatus) DeepCopy() *AzureDevOpsStatus {
 	in.DeepCopyInto(out)
 	return out
 }
-
-

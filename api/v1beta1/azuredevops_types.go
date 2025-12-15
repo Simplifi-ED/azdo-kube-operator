@@ -122,6 +122,7 @@ type AzureDevOpsStatus struct {
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:storageversion
 // +kubebuilder:printcolumn:name="Desired",type="integer",JSONPath=".status.desiredAgents"
 // +kubebuilder:printcolumn:name="Current",type="integer",JSONPath=".status.currentAgents"
 // +kubebuilder:printcolumn:name="Queued",type="integer",JSONPath=".status.queuedJobs"
