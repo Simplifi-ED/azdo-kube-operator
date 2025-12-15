@@ -75,6 +75,13 @@ func (k *KubernetesClient) ReconcileDeployment(ctx context.Context, cr *v0beta0.
 		},
 	}
 
+	// Ajout des variables d'environnement supplémentaires définies dans le CR.
+	// Si le champ .spec.env est omis ou vide, rien n'est ajouté, ce qui garantit
+	// que les variables ne sont présentes dans le Pod que si elles sont explicitement définies.
+	if len(cr.Spec.Env) > 0 {
+		env = append(env, cr.Spec.Env...)
+	}
+
 	// ImagePullSecrets (si spécifié).
 	var imagePullSecrets []corev1.LocalObjectReference
 	if azdo.ImagePullSecretRef != "" {

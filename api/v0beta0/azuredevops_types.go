@@ -81,6 +81,12 @@ type AzureDevOpsSpec struct {
 	// Ephemeral specifies whether the agent pods should be ephemeral or not (default: true)
 	// +kubebuilder:validation:Optional
 	Ephemeral bool `json:"ephemeral,omitempty"`
+
+	// Env specifies additional environment variables to inject into the agent Pod.
+	// This can be used, for example, to provide AZP_CLIENTID / AZP_CLIENTSECRET / AZP_TENANTID
+	// via Secret refs. Only variables explicitly specified here will be present in the Pod.
+	// +kubebuilder:validation:Optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
 }
 
 // AzureDevOpsStatus defines the observed state of AzureDevOps.
