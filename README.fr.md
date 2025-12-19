@@ -107,6 +107,37 @@ Il existe deux principales méthodes pour distribuer et déployer l'azdo-agent-o
 
    > **REMARQUE** : Lorsque des modifications sont apportées au projet, mettez à jour le Chart Helm avec la même commande. Si vous ajoutez des webhooks ou d'autres configurations, assurez-vous que les paramètres personnalisés dans `dist/chart/values.yaml` ou `dist/chart/manager/manager.yaml` sont réappliqués manuellement si nécessaire.
 
+## Fonctionnalités prévues / feuille de route
+
+L'opérateur continue d'évoluer. Les fonctionnalités suivantes sont planifiées et suivies dans les issues GitHub :
+
+- **Plans de pools et de files d'attente Azure DevOps déclaratifs**  
+  Des CRD `AzdoAgentPool` et `AzdoAgentQueue` pour créer et réconcilier les pools et files d'attente ADO directement depuis des manifestes Kubernetes (voir issues #43, #44, #45).
+
+- **Cycle de vie des agents éphémères et sécurisé**  
+  Agents à un seul job, drain lors des suppressions, TTL/nettoyage des « zombies » et meilleure gestion des pods/agents distants supprimés (voir issues #28, #39, #47).
+
+- **Autoscaling piloté par la demande**  
+  Scalabilité basée sur la longueur de file d'attente avec « warm pool », politiques d'autoscaling et routage par profil/demandes plutôt que « un pool par image » (voir issues #25, #29, #40, #41).
+
+- **Observabilité et télémétrie**  
+  Endpoints de métriques pour l'opérateur, support OpenTelemetry optionnel et exposition de métriques Azure DevOps au format Prometheus (voir issues #22, #23, #24, #31, #32, #36, #38).
+
+- **Sécurité, authentification et secrets**  
+  Modes d'authentification plus propres (PAT, managed identity, workload identity), intégrations avec des gestionnaires de secrets et flags globaux de sécurité pour le nettoyage/scaling (voir issues #19, #20, #21, #33, #42, #48).
+
+- **Expérience développeur et documentation**  
+  Quickstarts améliorés, diagrammes d'architecture, exemples de RBAC et outils de développement local (voir issues #30, #34, #35, #36, #37, #38).
+
+Vous pouvez suivre ou discuter ces sujets directement sur la [page des issues GitHub](https://github.com/Simplifi-ED/azdo-kube-operator/issues).
+
+## Mainteneur & société
+
+Ce projet est maintenu par **Etienne Deneuve** chez [Omnivya](https://www.omnivya.fr).
+
+- Site web : https://etienne.deneuve.xyz
+- LinkedIn : https://www.linkedin.com/in/etiennedeneuve/
+
 ## Contribution
 
 Nous accueillons avec plaisir les contributions de la communauté ! Si vous souhaitez aider à améliorer l'azdo-agent-operator, veuillez suivre ces directives :

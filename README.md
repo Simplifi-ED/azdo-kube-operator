@@ -107,6 +107,13 @@ There are two main methods to distribute and deploy the azdo-agent-operator.
 
    > **NOTE**: When changes are made to the project, update the Helm Chart using the same command. If you add webhooks or other configurations, ensure that the custom settings in `dist/chart/values.yaml` or `dist/chart/manager/manager.yaml` are manually re-applied if necessary.
 
+## Maintainer & company
+
+This project is maintained by **Etienne Deneuve** at [Omnivya](https://www.omnivya.fr).
+
+- Website: https://etienne.deneuve.xyz
+- LinkedIn: https://www.linkedin.com/in/etiennedeneuve/
+
 ## Contribution
 
 Community contributions are warmly welcomed! If you wish to help improve the azdo-agent-operator, please follow these guidelines:
