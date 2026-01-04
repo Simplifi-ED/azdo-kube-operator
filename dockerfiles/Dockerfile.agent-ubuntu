@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 ENV TARGETARCH="linux-x64"
 # Also can be "linux-arm", "linux-arm64".
 
