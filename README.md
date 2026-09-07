@@ -1,134 +1,210 @@
-# azdo-agent-operator
+# Azure DevOps Kubernetes Operator
 
-A Kubernetes operator that automates the lifecycle management of Azure DevOps agents. It dynamically provisions, scales, and removes agent pods based on the demand of your Azure DevOps pipelines.
+**Run self-hosted Azure DevOps agents on Kubernetes and scale capacity from pipeline demand.**
 
-## Description
+`azdo-kube-operator` is a Kubernetes operator for managing Azure DevOps agent workloads declaratively. It watches Azure DevOps queue state, reconciles the desired number of agent pods, and exposes that state through a Kubernetes custom resource.
 
-The **azdo-agent-operator** simplifies the continuous integration and delivery process by integrating Azure DevOps into your Kubernetes cluster. It monitors the task queue of your Azure DevOps agent pools and automatically manages the agent pods to handle pending build and release jobs. By dynamically aligning your infrastructure with the current workload, the operator reduces manual intervention and optimizes resource usage. It supports both Azure DevOps Services and Azure DevOps Server environments and is designed for high scalability, making it an ideal solution for teams looking to modernize their CI/CD pipelines.
+The project is intended for teams that want Azure DevOps build capacity to behave like part of their platform rather than as a manually managed pool of long-lived workers.
 
-## Prerequisites
+## Why this exists
 
-- **Go**: version v1.23.0+
-- **Docker**: version 17.03+
-- **kubectl**: version v1.11.3+
-- Access to a Kubernetes cluster (v1.11.3+)
+Self-hosted CI agents often become infrastructure of their own: permanently running machines, manual pool sizing, inconsistent images, hidden credentials and capacity that does not track actual pipeline demand.
 
-## Getting Started
+This operator moves that lifecycle into Kubernetes. The desired Azure DevOps integration, agent image, resource limits, scheduling constraints and scaling boundaries live in a custom resource, while the controller continuously reconciles actual state.
 
-### Deployment on the Cluster
+## What it manages
 
-**Build and push your image to the location specified by `IMG`:**
+An `AzureDevOps` custom resource defines, among other things:
 
-```sh
-make docker-build docker-push IMG=<some-registry>/azdo-agent-operator:tag
+- Azure DevOps organization URL and project;
+- agent pool name;
+- agent container image;
+- PAT secret reference;
+- minimum and maximum replicas;
+- pod resource requirements;
+- image pull secret;
+- tolerations and affinity;
+- optional ephemeral agent behaviour;
+- optional agent environment variables;
+- container build mode configuration.
+
+The status records operational state including:
+
+- current agents;
+- queued jobs;
+- desired agents;
+- ready agents;
+- last scaling time;
+- controller conditions and failed queue checks.
+
+## Reconciliation model
+
+At a high level:
+
+```text
+Azure DevOps queue
+       |
+       v
++----------------------+     AzureDevOps CR
+| Kubernetes operator  | <-------------------
++----------------------+
+       |
+       v
+Desired agent capacity
+       |
+       v
+Kubernetes agent pods
 ```
 
-> **NOTE**: This image must be published in the specified registry, and your cluster must have permission to pull images from this registry. Ensure you have the appropriate permissions in case of issues.
+The controller uses queue demand together with the configured `minReplicas` and `maxReplicas` boundaries to determine the desired amount of agent capacity. Kubernetes remains responsible for scheduling and running the resulting pods.
 
-**Install the CRDs in the cluster:**
+## Example custom resource
+
+The repository contains deployable samples under `config/samples/`. A resource follows this model:
+
+```yaml
+apiVersion: azuredevops.simplified.fr/v1beta1
+kind: AzureDevOps
+metadata:
+  name: example
+spec:
+  orgURL: https://dev.azure.com/example
+  project: platform
+  poolName: kubernetes-agents
+  image: ghcr.io/example/azdo-agent:latest
+  patSecretRef: azure-devops-pat
+  minReplicas: 1
+  maxReplicas: 10
+```
+
+Use the samples from the repository as the source of truth for the currently supported API version and fields.
+
+## Getting started
+
+### Requirements
+
+For local development and deployment from source you need:
+
+- Go;
+- Docker or another compatible image builder;
+- `kubectl`;
+- access to a Kubernetes cluster;
+- an Azure DevOps organization/project and agent pool;
+- credentials exposed to the operator through the referenced Kubernetes Secret.
+
+### Build and push the controller image
+
+```sh
+make docker-build docker-push IMG=<registry>/azdo-kube-operator:<tag>
+```
+
+### Install the CRDs
 
 ```sh
 make install
 ```
 
-**Deploy the Manager on the cluster with the image specified by `IMG`:**
+### Deploy the controller
 
 ```sh
-make deploy IMG=<some-registry>/azdo-agent-operator:tag
+make deploy IMG=<registry>/azdo-kube-operator:<tag>
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster administrator privileges or ensure you are logged in as an administrator.
-
-### Creating Instances of Your Solution
-
-You can apply the example custom resources (CR) from the `config/samples` directory:
+### Create an agent pool resource
 
 ```sh
 kubectl apply -k config/samples/
 ```
 
-> **NOTE**: Ensure that the sample configurations have the appropriate default values to test the operator.
+Inspect the reconciled state with:
 
-### Uninstallation
+```sh
+kubectl get azuredevops
+kubectl describe azuredevops <name>
+```
 
-**Remove the instances (CR) from the cluster:**
+## Distribution
+
+### Installation bundle
+
+Generate a consolidated installer:
+
+```sh
+make build-installer IMG=<registry>/azdo-kube-operator:<tag>
+```
+
+This produces `dist/install.yaml`, containing the resources generated by the project Kustomize configuration.
+
+### Helm
+
+The repository can also generate a Helm chart using the Kubebuilder Helm plugin:
+
+```sh
+kubebuilder edit --plugins=helm/v1-alpha
+```
+
+Generated chart content lives under `dist/chart`.
+
+## Security model
+
+The operator requires credentials to communicate with Azure DevOps. Keep those credentials in Kubernetes Secrets and scope them to the smallest Azure DevOps permissions required by your deployment.
+
+Agent pods execute CI/CD workloads, so their Kubernetes permissions, service accounts, mounted credentials, build capabilities and container runtime access should be treated as privileged platform concerns. In particular, enabling Docker-in-Docker or equivalent build modes changes the threat model and should be reviewed explicitly.
+
+Do not place credentials directly in the custom resource.
+
+## Operational considerations
+
+- Set realistic `minReplicas` and `maxReplicas` values so queue spikes cannot create unbounded cluster demand.
+- Define resource requests and limits for agent pods.
+- Use affinity, tolerations and dedicated node pools when CI workloads should be isolated from application workloads.
+- Monitor the custom resource status fields and controller logs when diagnosing scaling or Azure DevOps connectivity issues.
+- Treat changes to the agent image as platform changes: build, scan, version and promote them deliberately.
+
+## Uninstall
+
+Remove custom resources:
 
 ```sh
 kubectl delete -k config/samples/
 ```
 
-**Remove the APIs (CRD) from the cluster:**
+Remove the CRDs:
 
 ```sh
 make uninstall
 ```
 
-**Remove the controller from the cluster:**
+Remove the controller:
 
 ```sh
 make undeploy
 ```
 
-## Project Distribution
+## Development
 
-There are two main methods to distribute and deploy the azdo-agent-operator.
+Useful targets are available through:
 
-### Providing a Bundle with All YAML Files
+```sh
+make help
+```
 
-1. **Build the installer for the image:**
+Run tests before submitting changes:
 
-   Generate an installation bundle using:
+```sh
+make test
+```
 
-   ```sh
-   make build-installer IMG=<some-registry>/azdo-agent-operator:tag
-   ```
+## Contributing
 
-   This command creates an `install.yaml` file in the `dist` directory. This file contains all the Kubernetes resources generated with Kustomize necessary to install the operator.
+Issues and pull requests are welcome. Changes to reconciliation behaviour, authentication, scaling semantics or the custom-resource API should describe the operational impact and include tests where applicable.
 
-2. **Using the installer:**
+## Maintained by Omnivya
 
-   Users can install the operator by directly applying the YAML bundle:
+This project is maintained by [Omnivya](https://www.omnivya.fr/) as part of our public work around Kubernetes, platform engineering, reliability and infrastructure automation.
 
-   ```sh
-   kubectl apply -f https://raw.githubusercontent.com/<org>/azdo-agent-operator/<tag-or-branch>/dist/install.yaml
-   ```
-
-### Providing a Helm Chart
-
-1. **Build the Helm Chart using the optional Helm plugin:**
-
-   ```sh
-   kubebuilder edit --plugins=helm/v1-alpha
-   ```
-
-2. **Locate the Chart:**
-
-   A Helm Chart will be generated under `dist/chart`. Users can install or package the operator using the standard Helm workflow.
-
-   > **NOTE**: When changes are made to the project, update the Helm Chart using the same command. If you add webhooks or other configurations, ensure that the custom settings in `dist/chart/values.yaml` or `dist/chart/manager/manager.yaml` are manually re-applied if necessary.
-
-## Maintainer & company
-
-This project is maintained by **Etienne Deneuve** at [Omnivya](https://www.omnivya.fr).
-
-- Website: https://etienne.deneuve.xyz
-- LinkedIn: https://www.linkedin.com/in/etiennedeneuve/
-
-## Contribution
-
-Community contributions are warmly welcomed! If you wish to help improve the azdo-agent-operator, please follow these guidelines:
-
-- **Fork the Repository**: Create your own fork and work on a dedicated branch.
-- **Coding Standards**: Follow the project's coding standards, including unit tests (TDD) and integration tests when applicable.
-- **Pull Requests**: Submit pull requests with clear descriptions of your changes. Ensure that all tests pass before submitting.
-- **Issues**: If you find bugs or have feature suggestions, please open an issue with a detailed explanation.
-
-For more information, refer to our `CONTRIBUTING.md` (if available) and the Kubebuilder documentation for best practices in operator development.
-
-> **NOTE**: Run `make help` to obtain the list of all available make targets and additional project commands.
+Original maintainer: [Étienne Deneuve](https://etienne.deneuve.xyz/) — [LinkedIn](https://www.linkedin.com/in/etiennedeneuve/).
 
 ## License
 
-Copyright 2025.
-
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
+Licensed under the Apache License 2.0. See [`LICENSE`](./LICENSE).
